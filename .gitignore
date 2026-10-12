@@ -11,6 +11,11 @@ venv/
 .env.*
 !.env.example
 
+# DataLens: generated request plans and private deployment state
+datalens/build/
+datalens/.state.json
+datalens/.state.*
+
 # Editor and system files
 .DS_Store
 Thumbs.db

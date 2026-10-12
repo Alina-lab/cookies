@@ -1,0 +1,44 @@
+{
+  "checked_at_utc": "2026-10-12T21:33:56.831486+00:00",
+  "input_fingerprint": "2fa82aa4e112c3478c812f24840f4439e9f975c4786e11fb1ab003e1de7ccb43",
+  "materialized_csv": {
+    "status": "passed",
+    "rows": 70,
+    "metrics": 14,
+    "reproducible": true
+  },
+  "editor_logic": {
+    "status": "passed",
+    "prepare_executions": 1056,
+    "recipe_states": 6,
+    "physical_metrics": 14,
+    "sensory_states": 41
+  },
+  "sdk_contract": {
+    "status": "passed_with_mock_transport",
+    "api_version": "3",
+    "charts": 18,
+    "tabs": 3,
+    "rerun_without_duplicates": true,
+    "dashboard_update": true,
+    "editor_update": true,
+    "manual_change_protected": true,
+    "real_api_called": false
+  },
+  "notebook": {
+    "status": "passed",
+    "code_cells": 20,
+    "csv_reproduced": 10,
+    "original_notebook_and_sources_unchanged": true
+  },
+  "real_datalens_api": {
+    "status": "not_run",
+    "reason": "Доступ к аккаунту DataLens не предоставлен для этой проверки."
+  },
+  "browser": {
+    "status": "not_run",
+    "reason": "Нужны реальные объекты, аккаунт и проверка интерфейса."
+  },
+  "dashboard_created_by_this_check": false,
+  "public_dashboard_url": null
+}
