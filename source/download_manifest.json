@@ -1,0 +1,38 @@
+[
+  {
+    "file": "IngredientData.xlsx",
+    "url": "https://researchdata.reading.ac.uk/384/2/IngredientData.xlsx",
+    "bytes": 16531,
+    "sha256": "030f4c004e3d773659869976bb26983f768fb2e86853817aa5b744b972059faf"
+  },
+  {
+    "file": "DoughData.xlsx",
+    "url": "https://researchdata.reading.ac.uk/384/3/DoughData.xlsx",
+    "bytes": 54382,
+    "sha256": "e10bfd3344135773f35788ee198904eaf030af53870d0dbf52e496ebca6a2fd5"
+  },
+  {
+    "file": "BiscuitData.xlsx",
+    "url": "https://researchdata.reading.ac.uk/384/4/BiscuitData.xlsx",
+    "bytes": 57928,
+    "sha256": "44625c7922d7f9ee21ce1ff4a7f16d16f6f6ae523e6bceba42acaf15f9a8d53d"
+  },
+  {
+    "file": "README-SureChoc.docx",
+    "url": "https://researchdata.reading.ac.uk/384/1/README-SureChoc.docx",
+    "bytes": 39990,
+    "sha256": "abba1e82a0692ba817597e54d90e4a12516bf00c8b3107e89a76b64c4c0eccc2"
+  },
+  {
+    "file": "article.pdf",
+    "url": "https://centaur.reading.ac.uk/106563/8/1-s2.0-S0023643822007721-main.pdf",
+    "bytes": 1055645,
+    "sha256": "223311d8bed93a9bb6493aa2a4ad45f58106f3d5d1fee095d0abf2702f3de22c"
+  },
+  {
+    "file": "article_supplement_mmc1.docx",
+    "url": "https://ars.els-cdn.com/content/image/1-s2.0-S0023643822007721-mmc1.docx",
+    "bytes": 21422,
+    "sha256": "df0364421d8483e555b0e938f35042fa61c02e8bf57e799da70e7f3883253047"
+  }
+]
