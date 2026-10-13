@@ -15,9 +15,10 @@ import tempfile
 from unittest.mock import patch
 
 import httpx
-from datalens_sdk import DataLensClientYC
+from datalens_sdk import DataLensClientYC, EntryLocation
+from datalens_sdk.converter.dashboard import DashboardConverter
 
-from deploy import DeploymentCheckError, apply, canonical, chart_tabs, diagnose, differing_paths, digest, hash_status, make_plan, validate_chart_tabs
+from deploy import DeploymentCheckError, apply, canonical, chart_tabs, dashboard_builder, diagnose, differing_paths, digest, hash_status, make_plan, validate_chart_tabs
 from prepare import BUILD, HERE, ROOT, SOURCE_COUNTS, prepare, write_json
 
 
@@ -170,6 +171,36 @@ def api_contract_check(snapshot):
             updated_state = json.loads(state_path.read_text())
             assert {key: value["id"] for key, value in updated_state["charts"].items()} == original_ids
             assert updated_state["dashboard_id"] == original_dashboard_id
+            # Реальный сценарий: новая версия чартов + прежний дашборд, его хеш не совпал.
+            saved_state_bytes = state_path.read_bytes()
+            saved_dashboard = json.loads(json.dumps(entries[state["dashboard_id"]]["data"]))
+            history = subprocess.run(["git", "show", "8a4497b:datalens/dashboard.json"], cwd=ROOT,
+                                     capture_output=True, check=True)
+            old_snapshot = {**snapshot, "config": json.loads(history.stdout.decode("utf-8"))}
+            old_builder = dashboard_builder(client, old_snapshot, original_ids,
+                                            EntryLocation.workbook(state["workbook_id"]), legacy_style=True)
+            old_data = DashboardConverter.from_domain_create(old_builder.to_spec()).to_payload()["entry"]["data"]
+            legacy_state = json.loads(saved_state_bytes)
+            legacy_state["dashboard_hash"] = digest(old_data)
+            legacy_state.pop("dashboard_canonical_hash", None)
+            write_json(state_path, legacy_state)
+            altered = json.loads(json.dumps(old_data))
+            altered["settings"]["unexpected_server_field"] = True
+            entries[state["dashboard_id"]]["data"] = altered
+            before_history_diagnosis = state_path.read_bytes()
+            history_report = diagnose(client, snapshot, "test-organization", state_path=state_path)
+            last = history_report["objects"][-1]
+            assert last["status"] == "conflict" and last["previous_baseline_verified"]
+            assert last["different_from_saved_paths"] == ["$.settings.unexpected_server_field"]
+            assert not history_report["safe_to_update"]
+            assert state_path.read_bytes() == before_history_diagnosis
+            # Не принимаем реконструкцию, не подтверждённую сохранённым хешем.
+            legacy_state["dashboard_hash"] = "0" * 64
+            write_json(state_path, legacy_state)
+            invalid_history = diagnose(client, snapshot, "test-organization", state_path=state_path)
+            assert not invalid_history["objects"][-1]["previous_baseline_verified"]
+            entries[state["dashboard_id"]]["data"] = saved_dashboard
+            state_path.write_bytes(saved_state_bytes)
             # Ручная правка дашборда не маскируется нормализацией чисел.
             original_data = json.loads(json.dumps(entries[state["dashboard_id"]]["data"]))
             entries[state["dashboard_id"]]["data"]["tabs"][0]["layout"][0]["w"] += 1
@@ -201,7 +232,7 @@ def api_contract_check(snapshot):
     count = Counter(calls)
     assert count["createEditorChart"] == 19 and count["createDashboard"] == 1 and count["createWorkbook"] == 1
     return {"status": "passed_with_mock_transport", "api_version": "3", "charts": 18, "tabs": 3,
-            "safe_api_error_diagnostics": True, "read_only_diagnosis": True, "legacy_float_hash_migration": True, "dashboard_manual_change_protected": True, "update_only_preserves_ids": True, "partial_workbook_resume": True, "rerun_without_duplicates": True, "dashboard_update": True, "editor_update": True, "manual_change_protected": True,
+            "anchored_previous_dashboard_diagnosis": True, "unmatched_baseline_rejected": True, "safe_api_error_diagnostics": True, "read_only_diagnosis": True, "legacy_float_hash_migration": True, "dashboard_manual_change_protected": True, "update_only_preserves_ids": True, "partial_workbook_resume": True, "rerun_without_duplicates": True, "dashboard_update": True, "editor_update": True, "manual_change_protected": True,
             "real_api_called": False}
 
 

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import traceback
 from pathlib import Path
 
@@ -115,6 +116,32 @@ def check_binding(state, org_id, workbook_id):
             "state_binding", "Воркбук", "Воркбук не совпадает с локальным состоянием", "matching_workbook", "different")
 
 
+def previous_dashboard_report(client, snapshot, ids, location, current, saved_hash):
+    """Реконструкция известной версии, доверяем только точному сохранённому хешу.
+
+    Код из Git не исполняется. Читаем только JSON конфигурации до смены дизайна.
+    """
+    commit = "8a4497bdacd7ff7fa1f57b53cb17d6cb5aaaf4ea"
+    try:
+        result = subprocess.run(["git", "show", commit + ":datalens/dashboard.json"],
+                                cwd=HERE.parent, capture_output=True, check=True, timeout=10)
+        config = json.loads(result.stdout.decode("utf-8"))
+        previous = {**snapshot, "config": config}
+        builder = dashboard_builder(client, previous, ids, location, legacy_style=True)
+        baseline = DashboardConverter.from_domain_create(builder.to_spec()).to_payload()["entry"]["data"]
+    except Exception:
+        # Не выводим stderr, содержимое Git или непроверенный снимок.
+        return {"previous_baseline_verified": False, "previous_baseline_status": "reconstruction_unavailable"}
+    if digest(baseline) != saved_hash:
+        return {"previous_baseline_verified": False, "previous_baseline_status": "saved_hash_not_matched",
+                "reconstructed_hash": digest(baseline), "previous_config_commit": commit}
+    paths = differing_paths(baseline, current, limit=200)
+    # Никакого автопринятия текущего содержимого и записи нового хеша.
+    return {"previous_baseline_verified": True, "previous_baseline_status": "anchored_to_saved_hash",
+            "previous_config_commit": commit, "different_from_saved_paths": paths,
+            "saved_and_actual_semantically_equal": digest(canonical(baseline)) == digest(canonical(current))}
+
+
 def diagnose(client, snapshot, org_id, workbook_id="", state_path=STATE):
     """Только getWorkbook/getEditorChart/getDashboard. Файл состояния не меняется."""
     require(state_path.exists(), "state_load", "Состояние", "Отсутствует .state.json", "existing_state", "missing")
@@ -154,6 +181,8 @@ def diagnose(client, snapshot, org_id, workbook_id="", state_path=STATE):
             row.update({"key": "dashboard", "object": title, "stage": "compare_dashboard",
                         "different_from_target_paths": differing_paths(current, target),
                         "reason": "Конфликт с сохранённой и целевой версиями; возможна ручная правка или неизвестная нормализация" if row["status"] == "conflict" else "Сопоставление выполнено"})
+            if row["status"] == "conflict":
+                row.update(previous_dashboard_report(client, snapshot, ids, location, current, state.get("dashboard_hash")))
         except DeploymentCheckError as exc:
             row = {**exc.details, "key": "dashboard", "status": "api_error"}
         objects.append(row)
@@ -249,7 +278,7 @@ def selector_options(parameter, snapshot):
     return "Сенсорный показатель", snapshot["config"]["default_sensory_metric"], options
 
 
-def dashboard_builder(client, snapshot, charts, location):
+def dashboard_builder(client, snapshot, charts, location, legacy_style=False):
     builder = client.create.dashboard(name=snapshot["config"]["title"], location=location)
     for spec in snapshot["config"]["tabs"]:
         tab = DashboardTab(spec["title"], tab_id=spec["key"])
@@ -263,9 +292,9 @@ def dashboard_builder(client, snapshot, charts, location):
             entries = [DashboardChartTab(chart=charts[key], title=TAB_LABELS.get(key, descriptions[key]["title"]),
                                          description=descriptions[key]["title"], default=(i == 0))
                        for i, key in enumerate(group["charts"])]
-            tab.add_chart_group(entries, item_id=group["key"], at=tuple(group["at"]), background=ThemedColor(light="#FFFFFF", dark="#343535"), border_radius=8)
-        tab.add_text(spec["note"], item_id=spec["key"] + "_note", at=tuple(spec["note_at"]), background=ThemedColor(light="#F3F4F6", dark="#292A2B"), auto_height=False, border_radius=8)
-        tab.add_text(spec["footer"], item_id=spec["key"] + "_footer", at=tuple(spec["footer_at"]), background=ThemedColor(light="#F3F4F6", dark="#292A2B"), auto_height=False, border_radius=8)
+            tab.add_chart_group(entries, item_id=group["key"], at=tuple(group["at"]), background="#FFFFFF" if legacy_style else ThemedColor(light="#FFFFFF", dark="#343535"), border_radius=8)
+        tab.add_text(spec["note"], item_id=spec["key"] + "_note", at=tuple(spec["note_at"]), background="#F3F4F6" if legacy_style else ThemedColor(light="#F3F4F6", dark="#292A2B"), auto_height=False, border_radius=None if legacy_style else 8)
+        tab.add_text(spec["footer"], item_id=spec["key"] + "_footer", at=tuple(spec["footer_at"]), background="#F3F4F6" if legacy_style else ThemedColor(light="#F3F4F6", dark="#292A2B"), auto_height=False, border_radius=None if legacy_style else 8)
         builder.add_tab(tab)
     return builder.description("Опубликованный эксперимент: пять рецептур, три производственные партии; не доказательство эквивалентности.").settings(hide_tabs=False, silent_loading=True)
 

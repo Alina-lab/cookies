@@ -1,5 +1,5 @@
 {
-  "checked_at_utc": "2026-10-13T18:15:12.888088+00:00",
+  "checked_at_utc": "2026-10-13T21:08:09.053575+00:00",
   "input_fingerprint": "471f9610e82355136b8c099187d8c183546089cfb096fc3d1a4c10738490dd78",
   "materialized_csv": {
     "status": "passed",
@@ -52,6 +52,8 @@
     "api_version": "3",
     "charts": 18,
     "tabs": 3,
+    "anchored_previous_dashboard_diagnosis": true,
+    "unmatched_baseline_rejected": true,
     "safe_api_error_diagnostics": true,
     "read_only_diagnosis": true,
     "legacy_float_hash_migration": true,
