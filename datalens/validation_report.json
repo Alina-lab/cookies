@@ -1,11 +1,16 @@
 {
-  "checked_at_utc": "2026-10-13T13:55:03.890464+00:00",
+  "checked_at_utc": "2026-10-13T18:15:12.888088+00:00",
   "input_fingerprint": "471f9610e82355136b8c099187d8c183546089cfb096fc3d1a4c10738490dd78",
   "materialized_csv": {
     "status": "passed",
     "rows": 70,
     "metrics": 14,
     "reproducible": true
+  },
+  "hash_comparison": {
+    "status": "passed",
+    "integer_float_only": true,
+    "boolean_code_and_new_fields_protected": true
   },
   "theme": {
     "status": "passed",
@@ -47,6 +52,10 @@
     "api_version": "3",
     "charts": 18,
     "tabs": 3,
+    "safe_api_error_diagnostics": true,
+    "read_only_diagnosis": true,
+    "legacy_float_hash_migration": true,
+    "dashboard_manual_change_protected": true,
     "update_only_preserves_ids": true,
     "partial_workbook_resume": true,
     "rerun_without_duplicates": true,

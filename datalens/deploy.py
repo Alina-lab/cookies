@@ -4,7 +4,10 @@ import argparse
 import hashlib
 from importlib.metadata import version
 import json
+import logging
 import os
+import re
+import traceback
 from pathlib import Path
 
 from datalens_sdk import DashboardChartTab, DashboardTab, DataLensClientYC, EntryLocation, StaticYCIAMAuthProvider
@@ -25,6 +28,140 @@ TAB_LABELS = {
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+class DeploymentCheckError(AssertionError):
+    """Только локально сформированные сведения; без тел API и секретов."""
+    def __init__(self, stage, name, reason, expected, actual):
+        self.details = {"stage": stage, "object": name, "reason": reason,
+                        "expected": expected, "actual": actual}
+        super().__init__(json.dumps(self.details, ensure_ascii=False))
+
+
+def require(condition, stage, name, reason, expected, actual):
+    if not condition:
+        raise DeploymentCheckError(stage, name, reason, expected, actual)
+
+
+def canonical(value):
+    # bool не является числом JSON. Не удаляем поля, не меняем код или строки.
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dict):
+        return {key: canonical(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [canonical(item) for item in value]
+    return value
+
+
+def hash_status(current, target, saved_hash, saved_canonical=None):
+    raw, normalized = digest(current), digest(canonical(current))
+    expected = digest(canonical(target))
+    if normalized == expected:
+        status = "unchanged"
+    elif raw == saved_hash or normalized == saved_hash or normalized == saved_canonical:
+        status = "update_ready"
+    else:
+        status = "conflict"
+    # Saved state is user input too: never echo arbitrary text as a hash.
+    clean = lambda h: h if isinstance(h, str) and re.fullmatch(r"[0-9a-f]{64}", h) else None
+    return {"status": status, "expected_status": "unchanged_or_update_ready",
+            "saved_hash": clean(saved_hash), "saved_canonical_hash": clean(saved_canonical),
+            "actual_hash": raw, "actual_canonical_hash": normalized, "target_canonical_hash": expected,
+            "integer_float_normalization": raw != normalized}
+
+
+def differing_paths(a, b, prefix="$", limit=20):
+    """Показываем только пути известных полей, никогда значения или исходный код."""
+    if digest(canonical(a)) == digest(canonical(b)):
+        return []
+    if isinstance(a, dict) and isinstance(b, dict):
+        paths = []
+        for key in a.keys() | b.keys():
+            safe_key = key if re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", str(key)) else "<key>"
+            path = prefix + "." + safe_key
+            paths += [path] if key not in a or key not in b else differing_paths(a[key], b[key], path, limit)
+        return sorted(set(paths))[:limit]
+    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        return [path for i, (x, y) in enumerate(zip(a, b))
+                for path in differing_paths(x, y, prefix + f"[{i}]", limit)][:limit]
+    return [prefix]
+
+
+def remote(stage, name, operation):
+    logger = logging.getLogger("datalens_sdk")
+    old_propagate = logger.propagate
+    handler = logging.NullHandler()
+    logger.addHandler(handler)
+    logger.propagate = False  # SDK иначе логирует неочищенное message из ответа API.
+    try:
+        return operation()
+    except DeploymentCheckError:
+        raise
+    except Exception as exc:
+        status = getattr(getattr(exc, "context", None), "status_code", None)
+        raise DeploymentCheckError(stage, name, "Ошибка чтения/записи API; тело и заголовки скрыты",
+                                   "successful_api_response", {"error_class": type(exc).__name__,
+                                   "http_status": status if isinstance(status, int) else None}) from None
+    finally:
+        logger.propagate = old_propagate
+        logger.removeHandler(handler)
+
+
+def check_binding(state, org_id, workbook_id):
+    require(state.get("org_id") == org_id, "state_binding", "Организация", "Состояние относится к другой организации",
+            "matching_organization", "matching" if state.get("org_id") == org_id else "different")
+    require(not workbook_id or not state.get("workbook_id") or workbook_id == state["workbook_id"],
+            "state_binding", "Воркбук", "Воркбук не совпадает с локальным состоянием", "matching_workbook", "different")
+
+
+def diagnose(client, snapshot, org_id, workbook_id="", state_path=STATE):
+    """Только getWorkbook/getEditorChart/getDashboard. Файл состояния не меняется."""
+    require(state_path.exists(), "state_load", "Состояние", "Отсутствует .state.json", "existing_state", "missing")
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    check_binding(state, org_id, workbook_id)
+    require(bool(state.get("workbook_id")), "state_load", "Воркбук", "Нет сохранённого ID", "existing_id", "missing")
+    remote("get_workbook", "Воркбук", lambda: client.get.workbook(by_id=state["workbook_id"]))
+    location = EntryLocation.workbook(state["workbook_id"])
+    objects, ids = [], {}
+    for descriptor in snapshot["config"]["charts"]:
+        key, title = descriptor["key"], descriptor["title"]
+        saved = state.get("charts", {}).get(key, {})
+        if not saved.get("id"):
+            objects.append({"key": key, "object": title, "stage": "get_editor_chart", "status": "missing_id",
+                            "expected_status": "existing_object"})
+            continue
+        ids[key] = saved["id"]
+        try:
+            chart = remote("get_editor_chart", title, lambda: client.get.editor_chart(by_id=saved["id"], workbook_id=state["workbook_id"]))
+            target = chart_tabs(descriptor, snapshot)
+            current = {name: chart.data.get(name) for name in target}
+            row = hash_status(current, target, saved.get("hash"), saved.get("canonical_hash"))
+            row.update({"key": key, "object": title, "stage": "compare_editor_chart",
+                        "different_from_target_paths": differing_paths(current, target),
+                        "reason": "Конфликт с сохранённой и целевой версиями; возможна ручная правка или неизвестная нормализация" if row["status"] == "conflict" else "Сопоставление выполнено"})
+        except DeploymentCheckError as exc:
+            row = {**exc.details, "key": key, "status": "api_error"}
+        objects.append(row)
+    if state.get("dashboard_id") and len(ids) == len(snapshot["config"]["charts"]):
+        title = snapshot["config"]["title"]
+        try:
+            dashboard = remote("get_dashboard", title, lambda: client.get.dashboard(by_id=state["dashboard_id"], workbook_id=state["workbook_id"]))
+            builder = dashboard_builder(client, snapshot, ids, location)
+            target = DashboardConverter.from_domain_create(builder.to_spec()).to_payload()["entry"]["data"]
+            current = dict(dashboard.data)
+            row = hash_status(current, target, state.get("dashboard_hash"), state.get("dashboard_canonical_hash"))
+            row.update({"key": "dashboard", "object": title, "stage": "compare_dashboard",
+                        "different_from_target_paths": differing_paths(current, target),
+                        "reason": "Конфликт с сохранённой и целевой версиями; возможна ручная правка или неизвестная нормализация" if row["status"] == "conflict" else "Сопоставление выполнено"})
+        except DeploymentCheckError as exc:
+            row = {**exc.details, "key": "dashboard", "status": "api_error"}
+        objects.append(row)
+    else:
+        objects.append({"key": "dashboard", "object": snapshot["config"]["title"], "stage": "get_dashboard",
+                        "status": "missing_id_or_chart_ids", "expected_status": "existing_object"})
+    return {"mode": "read_only", "safe_to_update": all(row["status"] in ["unchanged", "update_ready"] for row in objects),
+            "state_modified": False, "objects": objects}
 
 
 def chart_snapshot(key, snapshot):
@@ -162,20 +299,25 @@ def save_state(path, state):
 
 def apply(client, snapshot, org_id, workbook_id="", state_path=STATE, update_only=False):
     preflight(snapshot)  # До сети и изменения локального состояния.
-    state = json.loads(state_path.read_text()) if state_path.exists() else {"org_id": org_id, "charts": {}}
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {"org_id": org_id, "charts": {}}
     if update_only:
         required = {c["key"] for c in snapshot["config"]["charts"]}
         if (not state.get("workbook_id") or not state.get("dashboard_id")
                 or not required.issubset(state.get("charts", {}))
                 or any(not state["charts"][key].get("id") for key in required)):
             raise ValueError("Для --update-only нужно сохранённое состояние воркбука, дашборда и всех чартов; восстановите .state.json")
-    assert state["org_id"] == org_id, "Состояние относится к другой организации"
-    assert not workbook_id or not state.get("workbook_id") or workbook_id == state["workbook_id"], "Воркбук не совпадает с локальным состоянием"
+    check_binding(state, org_id, workbook_id)
+    if update_only:
+        report = diagnose(client, snapshot, org_id, workbook_id, state_path)
+        for row in report["objects"]:
+            require(row["status"] in ["unchanged", "update_ready"], row["stage"], row["object"],
+                    "Управляемый объект изменён вручную или не совпадает с сохранённой версией; обновление остановлено",
+                    row.get("expected_status"), row)
     state.update({"status": "applying", "api_readback_verified": False, "browser_verified": False,
                   "requested_fingerprint": snapshot["fingerprint"]})
     save_state(state_path, state)
     destination = state.get("workbook_id") or workbook_id
-    workbook = client.get.workbook(by_id=destination) if destination else client.create.workbook(name=snapshot["config"]["workbook_name"]).build()
+    workbook = remote("get_or_create_workbook", "Воркбук", lambda: client.get.workbook(by_id=destination) if destination else client.create.workbook(name=snapshot["config"]["workbook_name"]).build())
     state["workbook_id"] = workbook.id
     save_state(state_path, state)
     location = EntryLocation.workbook(workbook.id)
@@ -186,45 +328,48 @@ def apply(client, snapshot, org_id, workbook_id="", state_path=STATE, update_onl
         expected_hash = digest(tabs)
         saved = state["charts"].get(key)
         if saved:
-            chart = client.get.editor_chart(by_id=saved["id"], workbook_id=workbook.id)
+            chart = remote("get_editor_chart", descriptor["title"], lambda: client.get.editor_chart(by_id=saved["id"], workbook_id=workbook.id))
             current_tabs = {name: chart.data.get(name) for name in tabs}
-            current_hash = digest(current_tabs)
-            assert current_hash in [saved["hash"], expected_hash], "Управляемый чарт изменён вручную; автоматическая перезапись остановлена"
-            if current_hash != expected_hash:
+            comparison = hash_status(current_tabs, tabs, saved.get("hash"), saved.get("canonical_hash"))
+            require(comparison["status"] != "conflict", "compare_editor_chart", descriptor["title"],
+                    "Управляемый чарт изменён вручную; автоматическая перезапись остановлена", "saved_or_target", comparison)
+            if comparison["status"] != "unchanged":
                 update = chart.update.mode("publish")
                 for tab, content in tabs.items():
                     update = getattr(update, tab)(content)
-                chart = update.execute()
+                chart = remote("update_editor_chart", descriptor["title"], update.execute)
         else:
-            chart = chart_builder(client, descriptor, snapshot, location).build()
-        assert chart.id, "API не вернул идентификатор чарта"
-        state["charts"][key] = {"id": chart.id, "hash": expected_hash}
+            chart = remote("create_editor_chart", descriptor["title"], lambda: chart_builder(client, descriptor, snapshot, location).build())
+        require(bool(chart.id), "editor_id", descriptor["title"], "API не вернул идентификатор чарта", "existing_id", "missing")
+        state["charts"][key] = {"id": chart.id, "hash": expected_hash, "canonical_hash": digest(canonical(tabs))}
         charts[key] = chart
         save_state(state_path, state)
     builder = dashboard_builder(client, snapshot, charts, location)
     expected = DashboardConverter.from_domain_create(builder.to_spec()).to_payload()["entry"]
     if state.get("dashboard_id"):
-        dashboard = client.get.dashboard(by_id=state["dashboard_id"], workbook_id=workbook.id)
+        dashboard = remote("get_dashboard", snapshot["config"]["title"], lambda: client.get.dashboard(by_id=state["dashboard_id"], workbook_id=workbook.id))
         expected_hash = digest(expected["data"])
-        current_hash = digest(dict(dashboard.data))
-        assert current_hash in [state["dashboard_hash"], expected_hash], "Дашборд изменён вручную; автоматическая перезапись остановлена"
-        if current_hash != expected_hash:
+        comparison = hash_status(dict(dashboard.data), expected["data"], state.get("dashboard_hash"), state.get("dashboard_canonical_hash"))
+        require(comparison["status"] != "conflict", "compare_dashboard", snapshot["config"]["title"],
+                "Дашборд изменён вручную; автоматическая перезапись остановлена", "saved_or_target", comparison)
+        if comparison["status"] != "unchanged":
             replacement = {**dict(dashboard.raw), **expected, "entryId": dashboard.id}
-            dashboard = client.raw.replace.dashboard(target=dashboard, response_snapshot={"entry": replacement}).mode("publish").execute()
+            dashboard = remote("update_dashboard", snapshot["config"]["title"], lambda: client.raw.replace.dashboard(target=dashboard, response_snapshot={"entry": replacement}).mode("publish").execute())
     else:
-        dashboard = builder.build()
-    assert dashboard.id, "API не вернул идентификатор дашборда"
+        dashboard = remote("create_dashboard", snapshot["config"]["title"], builder.build)
+    require(bool(dashboard.id), "dashboard_id", snapshot["config"]["title"], "API не вернул идентификатор дашборда", "existing_id", "missing")
     state["dashboard_id"] = dashboard.id
     state["dashboard_hash"] = digest(expected["data"])
+    state["dashboard_canonical_hash"] = digest(canonical(expected["data"]))
     state["fingerprint"] = snapshot["fingerprint"]
     save_state(state_path, state)
     # Read-back подтверждает содержание объектов, но не отрисовку в браузере.
     for key, chart in charts.items():
-        fetched = client.get.editor_chart(by_id=chart.id, workbook_id=workbook.id)
+        fetched = remote("readback_editor_chart", key, lambda: client.get.editor_chart(by_id=chart.id, workbook_id=workbook.id))
         tabs = chart_tabs(next(c for c in snapshot["config"]["charts"] if c["key"] == key), snapshot)
-        assert all(fetched.data.get(tab) == value for tab, value in tabs.items()), f"Не совпало содержимое чарта: {key}"
-    fetched = client.get.dashboard(by_id=dashboard.id, workbook_id=workbook.id)
-    assert digest(dict(fetched.data)) == state["dashboard_hash"], "Не совпало содержимое дашборда"
+        require(all(fetched.data.get(tab) == value for tab, value in tabs.items()), "readback_editor_chart", key, "Не совпало содержимое чарта", digest(tabs), digest({tab: fetched.data.get(tab) for tab in tabs}))
+    fetched = remote("readback_dashboard", snapshot["config"]["title"], lambda: client.get.dashboard(by_id=dashboard.id, workbook_id=workbook.id))
+    require(digest(canonical(dict(fetched.data))) == state["dashboard_canonical_hash"], "readback_dashboard", snapshot["config"]["title"], "Не совпало содержимое дашборда", state["dashboard_canonical_hash"], digest(canonical(dict(fetched.data))))
     state["api_readback_verified"] = True
     state["status"] = "created_and_api_readback_verified"
     state["browser_verified"] = False
@@ -239,10 +384,13 @@ def main():
     parser.add_argument("--apply", action="store_true", help="Создать/обновить объекты через официальный API; без флага только локальный план")
     parser.add_argument("--export-tabs", action="store_true", help="Также выгрузить вкладки Editor в отдельные JSON/JS-файлы для ручной сборки")
     parser.add_argument("--update-only", action="store_true", help="Только обновить существующие ID: при неполном состоянии остановиться до API")
+    parser.add_argument("--diagnose", action="store_true", help="Только чтение существующих объектов API; не меняет состояние или объекты")
     args = parser.parse_args()
+    if args.diagnose and (args.apply or args.update_only):
+        parser.error("--diagnose нельзя совмещать с --apply/--update-only")
     if args.update_only and not args.apply:
         parser.error("--update-only используется вместе с --apply")
-    assert version("datalens-sdk") == "3.2.0", "Установите зафиксированный SDK из datalens/requirements.txt"
+    require(version("datalens-sdk") == "3.2.0", "sdk_version", "SDK", "Установите зависимости requirements.txt", "3.2.0", version("datalens-sdk"))
     snapshot = prepare()
     plan = make_plan(snapshot)
     if args.export_tabs:
@@ -253,7 +401,7 @@ def main():
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text(content + "\n", encoding="utf-8")
         print("Вкладки Editor выгружены в datalens/build/editor/.")
-    if not args.apply:
+    if not args.apply and not args.diagnose:
         print(f"Локальный план: {len(plan['requests']) - 1} чартов, 3 вкладки. Объекты DataLens не созданы.")
         return
     org_id = os.environ.get("DATALENS_ORG_ID")
@@ -264,8 +412,20 @@ def main():
     options = {"auth": auth} if auth else {}  # При отсутствии токена SDK использует yc CLI.
     try:
         with DataLensClientYC(**options) as client:
+            if args.diagnose:
+                report = diagnose(client, snapshot, org_id, os.environ.get("DATALENS_WORKBOOK_ID", ""))
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+                return 0 if report["safe_to_update"] else 2
             state = apply(client, snapshot, org_id, os.environ.get("DATALENS_WORKBOOK_ID", ""), update_only=args.update_only)
+    except DeploymentCheckError as exc:
+        print(json.dumps(exc.details, ensure_ascii=False, indent=2))
+        return 2
     except Exception as exc:
+        frames = traceback.extract_tb(exc.__traceback__)
+        frame = frames[-1] if frames else None
+        print(json.dumps({"stage": "unclassified_local_or_sdk", "error_class": type(exc).__name__,
+                          "location": {"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name} if frame else None,
+                          "expected": "successful_execution", "actual": "failed"}, ensure_ascii=False))
         # Тело ошибки API и HTTP-заголовки не печатаем: они могут содержать данные авторизации.
         raise SystemExit(f"Сборка не завершена ({type(exc).__name__}). Проверьте доступ, конфигурацию и локальное состояние; секреты в лог не записаны.") from None
     print("Объекты созданы/обновлены, содержание проверено через API:", state["dashboard_url"])
@@ -273,4 +433,16 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        raise SystemExit(main())
+    except DeploymentCheckError as exc:
+        print(json.dumps(exc.details, ensure_ascii=False, indent=2))
+        raise SystemExit(2) from None
+    except AssertionError as exc:
+        # prepare.py содержит проверки данных до API: показываем место, не значения.
+        frame = traceback.extract_tb(exc.__traceback__)[-1]
+        print(json.dumps({"stage": "local_preparation", "object": Path(frame.filename).name,
+                          "reason": "Не пройдена проверка локальных данных или схемы SDK",
+                          "expected": "invariant_passed", "actual": "AssertionError",
+                          "line": frame.lineno, "function": frame.name}, ensure_ascii=False))
+        raise SystemExit(2) from None

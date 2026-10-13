@@ -1,6 +1,8 @@
 """Реальные локальные проверки. Проверка DataLens в браузере остаётся отдельной."""
 
 import argparse
+import contextlib
+import io
 from collections import Counter
 from datetime import datetime, timezone
 import hashlib
@@ -14,9 +16,8 @@ from unittest.mock import patch
 
 import httpx
 from datalens_sdk import DataLensClientYC
-from datalens_sdk.errors import DataLensAPIError
 
-from deploy import apply, chart_tabs, digest, make_plan, validate_chart_tabs
+from deploy import DeploymentCheckError, apply, canonical, chart_tabs, diagnose, differing_paths, digest, hash_status, make_plan, validate_chart_tabs
 from prepare import BUILD, HERE, ROOT, SOURCE_COUNTS, prepare, write_json
 
 
@@ -67,6 +68,7 @@ def api_contract_check(snapshot):
     """Официальный SDK и его схемы; ответы заменены HTTP-стабом, сети нет."""
     entries, calls = {}, []
     fail_first_chart = True
+    fail_read = False
     def handler(request):
         nonlocal fail_first_chart
         assert request.url.host == "api.datalens.tech"
@@ -91,6 +93,8 @@ def api_contract_check(snapshot):
             entries[entry_id] = entry
             return httpx.Response(200, json={"entry": entry})
         if method in ["getEditorChart", "getDashboard"]:
+            if fail_read:
+                return httpx.Response(403, json={"message": "DO_NOT_PRINT_TEST_SENTINEL"})
             entry_id = payload.get("chartId", payload.get("dashboardId"))
             return httpx.Response(200, json={"entry": entries[entry_id]})
         if method in ["updateEditorChart", "updateDashboard"]:
@@ -105,7 +109,8 @@ def api_contract_check(snapshot):
         with DataLensClientYC(auth=None, transport=httpx.MockTransport(handler)) as client:
             try:
                 apply(client, snapshot, "test-organization", state_path=state_path)
-            except DataLensAPIError:
+            except DeploymentCheckError as exc:
+                assert exc.details["stage"] == "create_editor_chart"
                 partial = json.loads(state_path.read_text())
                 assert partial["workbook_id"] == "test-workbook" and partial["charts"] == {}
                 assert not partial["api_readback_verified"]
@@ -122,6 +127,37 @@ def api_contract_check(snapshot):
             apply(client, snapshot, "test-organization", state_path=state_path, update_only=True)
             after = Counter(calls)
             assert all(after[m] == before[m] for m in ["createWorkbook", "createEditorChart", "createDashboard", "updateEditorChart", "updateDashboard"])
+            # Диагностика только читает; старый хеш и 36.0 из SDK не означают ручную правку.
+            state_before = state_path.read_bytes()
+            before_diagnostic = len(calls)
+            report = diagnose(client, snapshot, "test-organization", state_path=state_path)
+            assert report["safe_to_update"] and len(report["objects"]) == 19
+            assert set(calls[before_diagnostic:]) <= {"getWorkbook", "getEditorChart", "getDashboard"}
+            assert state_path.read_bytes() == state_before
+            fail_read = True
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                errors = diagnose(client, snapshot, "test-organization", state_path=state_path)
+            fail_read = False
+            assert not errors["safe_to_update"]
+            assert errors["objects"][0]["actual"]["http_status"] == 403
+            assert "DO_NOT_PRINT_TEST_SENTINEL" not in json.dumps(errors) + stderr.getvalue()
+            assert state_path.read_bytes() == state_before
+            dashboard_data = entries[state["dashboard_id"]]["data"]
+            for tab in dashboard_data["tabs"]:
+                for row in tab["layout"]:
+                    for field in ["x", "y", "w", "h"]:
+                        row[field] = float(row[field])
+            # Имитируем прежний .state без canonical_hash.
+            legacy = json.loads(state_before)
+            legacy.pop("dashboard_canonical_hash", None)
+            for value in legacy["charts"].values():
+                value.pop("canonical_hash", None)
+            write_json(state_path, legacy)
+            legacy_before = state_path.read_bytes()
+            report = diagnose(client, snapshot, "test-organization", state_path=state_path)
+            assert report["safe_to_update"]
+            assert state_path.read_bytes() == legacy_before
             # Изменение управляемого описания проверяет ветку обновления дашборда.
             changed = json.loads(json.dumps(snapshot))
             changed["config"]["tabs"][0]["note"] += " Проверка обновления."
@@ -134,6 +170,24 @@ def api_contract_check(snapshot):
             updated_state = json.loads(state_path.read_text())
             assert {key: value["id"] for key, value in updated_state["charts"].items()} == original_ids
             assert updated_state["dashboard_id"] == original_dashboard_id
+            # Ручная правка дашборда не маскируется нормализацией чисел.
+            original_data = json.loads(json.dumps(entries[state["dashboard_id"]]["data"]))
+            entries[state["dashboard_id"]]["data"]["tabs"][0]["layout"][0]["w"] += 1
+            unchanged_state = state_path.read_bytes()
+            blocked = diagnose(client, changed, "test-organization", state_path=state_path)
+            assert not blocked["safe_to_update"]
+            assert blocked["objects"][-1]["status"] == "conflict"
+            mutations_before = Counter(calls)
+            try:
+                apply(client, changed, "test-organization", state_path=state_path, update_only=True)
+            except DeploymentCheckError as exc:
+                assert exc.details["stage"] == "compare_dashboard"
+            else:
+                raise AssertionError("Ручная правка дашборда была перезаписана")
+            assert state_path.read_bytes() == unchanged_state
+            assert Counter(calls)["updateEditorChart"] == mutations_before["updateEditorChart"]
+            assert Counter(calls)["updateDashboard"] == mutations_before["updateDashboard"]
+            entries[state["dashboard_id"]]["data"] = original_data
             # Ручная правка управляемого чарта не должна молча перезаписываться.
             entries[state["charts"]["force_graph"]["id"]]["data"]["prepare"] += "\n// ручное изменение"
             try:
@@ -141,13 +195,13 @@ def api_contract_check(snapshot):
             except AssertionError as exc:
                 assert "изменён вручную" in str(exc)
                 failed = json.loads(state_path.read_text())
-                assert failed["status"] == "applying" and not failed["api_readback_verified"]
+                assert failed["api_readback_verified"]  # Конфликт выявлен до записи состояния.
             else:
                 raise AssertionError("Ручное изменение не было защищено")
     count = Counter(calls)
     assert count["createEditorChart"] == 19 and count["createDashboard"] == 1 and count["createWorkbook"] == 1
     return {"status": "passed_with_mock_transport", "api_version": "3", "charts": 18, "tabs": 3,
-            "update_only_preserves_ids": True, "partial_workbook_resume": True, "rerun_without_duplicates": True, "dashboard_update": True, "editor_update": True, "manual_change_protected": True,
+            "safe_api_error_diagnostics": True, "read_only_diagnosis": True, "legacy_float_hash_migration": True, "dashboard_manual_change_protected": True, "update_only_preserves_ids": True, "partial_workbook_resume": True, "rerun_without_duplicates": True, "dashboard_update": True, "editor_update": True, "manual_change_protected": True,
             "real_api_called": False}
 
 
@@ -205,6 +259,21 @@ def theme_check(plan):
     return {"status": "passed", "themed_items": count, "browser_verified": False}
 
 
+def comparison_check():
+    legacy = {"w": 36, "enabled": True, "code": "module.exports = {};"}
+    current = {**legacy, "w": 36.0}
+    target = {**legacy, "w": 30}
+    assert digest(current) != digest(legacy)
+    assert hash_status(current, target, digest(legacy))["status"] == "update_ready"
+    for key, value in [("w", 35.0), ("enabled", 1), ("code", "module.exports = {manual: true};")]:
+        altered = {**current, key: value}
+        assert hash_status(altered, target, digest(legacy))["status"] == "conflict"
+    assert differing_paths({"enabled": True}, {"enabled": 1}) == ["$.enabled"]
+    assert differing_paths({"new_field": None}, {}) == ["$.new_field"]
+    assert hash_status({**current, "new_field": None}, target, digest(legacy))["status"] == "conflict"
+    return {"status": "passed", "integer_float_only": True, "boolean_code_and_new_fields_protected": True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--notebook", action="store_true", help="Также выполнить существующий notebook в новом ядре")
@@ -243,7 +312,7 @@ def main():
     report = {
         "checked_at_utc": datetime.now(timezone.utc).isoformat(), "input_fingerprint": snapshot["fingerprint"],
         "materialized_csv": {"status": "passed", "rows": 70, "metrics": 14, "reproducible": True},
-        "theme": theme_check(plan), "update_only": update_only_check(snapshot),
+        "hash_comparison": comparison_check(), "theme": theme_check(plan), "update_only": update_only_check(snapshot),
         "official_gravity_schema": official_schema, "meta_semantics": meta, "editor_logic": editor, "sdk_contract": contract, "notebook": notebook,
         "real_datalens_api": {"status": "not_run", "reason": "Доступ к аккаунту DataLens не предоставлен для этой проверки."},
         "browser": {"status": "not_run", "reason": "Нужны реальные объекты, аккаунт и проверка интерфейса."},
