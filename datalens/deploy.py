@@ -55,7 +55,7 @@ def chart_tabs(descriptor, snapshot):
     prefix = "const DATA = " + json.dumps(chart_snapshot(descriptor["key"], snapshot), ensure_ascii=False, allow_nan=False) + ";\n"
     prefix += "const VIEW = " + json.dumps(descriptor["key"]) + ";\n"
     tabs = {
-        "meta": "module.exports = {};", "sources": "module.exports = {};",
+        "meta": json.dumps({"links": {}}, allow_nan=False), "sources": "module.exports = {};",
         "params": "module.exports = " + json.dumps(defaults, ensure_ascii=False) + ";",
         "controls": "module.exports = {controls: []};",
         "prepare": prefix + (HERE / "editor.js").read_text(encoding="utf-8"),
@@ -67,11 +67,34 @@ def chart_tabs(descriptor, snapshot):
     return tabs
 
 
+def validate_chart_tabs(tabs):
+    """Meta — JSON-текст, остальные вкладки содержат JavaScript.
+
+    Формат: https://yandex.cloud/ru/docs/datalens/charts/editor/tabs#meta
+    SDK проверяет тип str, но не JSON внутри строки.
+    """
+    try:
+        meta = json.loads(tabs["meta"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Meta должна содержать JSON-объект с links, а не JavaScript") from exc
+    if not isinstance(meta, dict) or not isinstance(meta.get("links"), dict):
+        raise ValueError("Meta должна содержать JSON-объект с объектом links")
+    if any(not isinstance(k, str) or not isinstance(v, str) for k, v in meta["links"].items()):
+        raise ValueError("Meta.links должна сопоставлять строковые алиасы строковым ID")
+
+
+def preflight(snapshot):
+    for descriptor in snapshot["config"]["charts"]:
+        validate_chart_tabs(chart_tabs(descriptor, snapshot))
+
+
 def chart_builder(client, descriptor, snapshot, location):
     factory = getattr(client.create.editor_chart, descriptor["kind"])
     builder = factory(name=descriptor["title"], location=location).description(
         "Cookies: управляется datalens/deploy.py; данные опубликованного эксперимента, без новых наблюдений.")
-    for tab, content in chart_tabs(descriptor, snapshot).items():
+    tabs = chart_tabs(descriptor, snapshot)
+    validate_chart_tabs(tabs)
+    for tab, content in tabs.items():
         builder = getattr(builder, tab)(content)
     return builder
 
@@ -111,6 +134,7 @@ def dashboard_builder(client, snapshot, charts, location):
 
 def make_plan(snapshot):
     """SDK проверяет схемы запросов локально. Подстановочные ID не реальные объекты."""
+    preflight(snapshot)
     location = EntryLocation.workbook("__WORKBOOK_ID__")
     with DataLensClientYC(auth=None) as client:
         requests = []
@@ -136,6 +160,7 @@ def save_state(path, state):
 
 
 def apply(client, snapshot, org_id, workbook_id="", state_path=STATE):
+    preflight(snapshot)  # До сети и изменения локального состояния.
     state = json.loads(state_path.read_text()) if state_path.exists() else {"org_id": org_id, "charts": {}}
     assert state["org_id"] == org_id, "Состояние относится к другой организации"
     assert not workbook_id or not state.get("workbook_id") or workbook_id == state["workbook_id"], "Воркбук не совпадает с локальным состоянием"
@@ -205,7 +230,7 @@ def apply(client, snapshot, org_id, workbook_id="", state_path=STATE):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Создать/обновить объекты через официальный API; без флага только локальный план")
-    parser.add_argument("--export-tabs", action="store_true", help="Также выгрузить вкладки Editor в отдельные JS-файлы для ручной сборки")
+    parser.add_argument("--export-tabs", action="store_true", help="Также выгрузить вкладки Editor в отдельные JSON/JS-файлы для ручной сборки")
     args = parser.parse_args()
     assert version("datalens-sdk") == "3.2.0", "Установите зафиксированный SDK из datalens/requirements.txt"
     snapshot = prepare()
@@ -214,7 +239,7 @@ def main():
         for request in plan["requests"]:
             if "key" in request:
                 for tab, content in request["body"]["entry"]["data"].items():
-                    path = BUILD / "editor" / request["key"] / (tab + ".js")
+                    path = BUILD / "editor" / request["key"] / (tab + (".json" if tab == "meta" else ".js"))
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text(content + "\n", encoding="utf-8")
         print("Вкладки Editor выгружены в datalens/build/editor/.")

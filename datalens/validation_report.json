@@ -1,11 +1,17 @@
 {
-  "checked_at_utc": "2026-10-12T21:33:56.831486+00:00",
+  "checked_at_utc": "2026-10-13T13:19:51.894711+00:00",
   "input_fingerprint": "2fa82aa4e112c3478c812f24840f4439e9f975c4786e11fb1ab003e1de7ccb43",
   "materialized_csv": {
     "status": "passed",
     "rows": 70,
     "metrics": 14,
     "reproducible": true
+  },
+  "meta_semantics": {
+    "status": "passed",
+    "legacy_javascript_rejected": true,
+    "invalid_cases": 8,
+    "failure_before_api_and_state_write": true
   },
   "editor_logic": {
     "status": "passed",
@@ -19,6 +25,7 @@
     "api_version": "3",
     "charts": 18,
     "tabs": 3,
+    "partial_workbook_resume": true,
     "rerun_without_duplicates": true,
     "dashboard_update": true,
     "editor_update": true,

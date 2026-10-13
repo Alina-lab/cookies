@@ -10,11 +10,13 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 
 import httpx
 from datalens_sdk import DataLensClientYC
+from datalens_sdk.errors import DataLensAPIError
 
-from deploy import apply, digest, make_plan
+from deploy import apply, chart_tabs, digest, make_plan, validate_chart_tabs
 from prepare import BUILD, HERE, ROOT, SOURCE_COUNTS, prepare, write_json
 
 
@@ -64,13 +66,20 @@ def notebook_check():
 def api_contract_check(snapshot):
     """Официальный SDK и его схемы; ответы заменены HTTP-стабом, сети нет."""
     entries, calls = {}, []
+    fail_first_chart = True
     def handler(request):
+        nonlocal fail_first_chart
         assert request.url.host == "api.datalens.tech"
         assert request.headers["x-dl-api-version"] == "3"
         assert "authorization" not in request.headers
         payload = json.loads(request.content)
         method = request.url.path.rsplit("/", 1)[1]
         calls.append(method)
+        if method in ["createEditorChart", "updateEditorChart"]:
+            validate_chart_tabs(payload["entry"]["data"])
+            if fail_first_chart:
+                fail_first_chart = False
+                return httpx.Response(500, json={"message": "Meta must be a valid JSON"})
         if method == "createWorkbook":
             return httpx.Response(200, json={"workbookId": "test-workbook", "title": payload["title"]})
         if method == "getWorkbook":
@@ -94,6 +103,14 @@ def api_contract_check(snapshot):
     with tempfile.TemporaryDirectory(prefix="cookies-api-test-") as directory:
         state_path = Path(directory) / "state.json"
         with DataLensClientYC(auth=None, transport=httpx.MockTransport(handler)) as client:
+            try:
+                apply(client, snapshot, "test-organization", state_path=state_path)
+            except DataLensAPIError:
+                partial = json.loads(state_path.read_text())
+                assert partial["workbook_id"] == "test-workbook" and partial["charts"] == {}
+                assert not partial["api_readback_verified"]
+            else:
+                raise AssertionError("Не проверен частично созданный воркбук")
             state = apply(client, snapshot, "test-organization", state_path=state_path)
             assert state["api_readback_verified"] and not state["browser_verified"]
             dashboard = client.get.dashboard(by_id=state["dashboard_id"])
@@ -123,10 +140,33 @@ def api_contract_check(snapshot):
             else:
                 raise AssertionError("Ручное изменение не было защищено")
     count = Counter(calls)
-    assert count["createEditorChart"] == 18 and count["createDashboard"] == 1 and count["createWorkbook"] == 1
+    assert count["createEditorChart"] == 19 and count["createDashboard"] == 1 and count["createWorkbook"] == 1
     return {"status": "passed_with_mock_transport", "api_version": "3", "charts": 18, "tabs": 3,
-            "rerun_without_duplicates": True, "dashboard_update": True, "editor_update": True, "manual_change_protected": True,
+            "partial_workbook_resume": True, "rerun_without_duplicates": True, "dashboard_update": True, "editor_update": True, "manual_change_protected": True,
             "real_api_called": False}
+
+
+def meta_check(snapshot):
+    descriptor = snapshot["config"]["charts"][0]
+    tabs = chart_tabs(descriptor, snapshot)
+    assert json.loads(tabs["meta"]) == {"links": {}}
+    invalid = ["module.exports = {};", "{", "[]", "null", "{}", '{"links": []}', '{"links": {"x": 1}}', {}]
+    with tempfile.TemporaryDirectory(prefix="cookies-meta-test-") as directory:
+        state_path = Path(directory) / "state.json"
+        original = b'{"org_id":"test-organization","workbook_id":"existing-workbook","charts":{}}'
+        state_path.write_bytes(original)
+        for value in invalid:
+            with patch("deploy.chart_tabs", return_value={**tabs, "meta": value}):
+                try:
+                    # Любой доступ к client=None провалил бы проверку: сеть не нужна.
+                    apply(None, snapshot, "test-organization", state_path=state_path)
+                except ValueError as exc:
+                    assert "Meta" in str(exc)
+                else:
+                    raise AssertionError("Некорректная Meta прошла preflight")
+                assert state_path.read_bytes() == original
+    return {"status": "passed", "legacy_javascript_rejected": True,
+            "invalid_cases": len(invalid), "failure_before_api_and_state_write": True}
 
 
 def main():
@@ -143,12 +183,13 @@ def main():
     node = subprocess.run(["node", str(HERE / "check_editor.js"), str(BUILD / "plan.json"), str(BUILD / "data.json")],
                           check=True, capture_output=True, text=True)
     editor = json.loads(node.stdout)
+    meta = meta_check(snapshot)
     contract = api_contract_check(snapshot)
     notebook = notebook_check() if args.notebook else {"status": "not_run_in_this_command"}
     report = {
         "checked_at_utc": datetime.now(timezone.utc).isoformat(), "input_fingerprint": snapshot["fingerprint"],
         "materialized_csv": {"status": "passed", "rows": 70, "metrics": 14, "reproducible": True},
-        "editor_logic": editor, "sdk_contract": contract, "notebook": notebook,
+        "meta_semantics": meta, "editor_logic": editor, "sdk_contract": contract, "notebook": notebook,
         "real_datalens_api": {"status": "not_run", "reason": "Доступ к аккаунту DataLens не предоставлен для этой проверки."},
         "browser": {"status": "not_run", "reason": "Нужны реальные объекты, аккаунт и проверка интерфейса."},
         "dashboard_created_by_this_check": False, "public_dashboard_url": None,
