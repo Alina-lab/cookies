@@ -1,11 +1,27 @@
 {
-  "checked_at_utc": "2026-10-13T13:19:51.894711+00:00",
-  "input_fingerprint": "2fa82aa4e112c3478c812f24840f4439e9f975c4786e11fb1ab003e1de7ccb43",
+  "checked_at_utc": "2026-10-13T13:55:03.890464+00:00",
+  "input_fingerprint": "471f9610e82355136b8c099187d8c183546089cfb096fc3d1a4c10738490dd78",
   "materialized_csv": {
     "status": "passed",
     "rows": 70,
     "metrics": 14,
     "reproducible": true
+  },
+  "theme": {
+    "status": "passed",
+    "themed_items": 17,
+    "browser_verified": false
+  },
+  "update_only": {
+    "status": "passed",
+    "incomplete_state_rejected_before_api": true
+  },
+  "official_gravity_schema": {
+    "status": "passed",
+    "cases": 682,
+    "schema_sha256": "f76c96851794fd7132d7ab55f2b53c85f3937a8d530d74552837b60b1845db1e",
+    "library_version": "1.66.0",
+    "source": "https://unpkg.com/@gravity-ui/charts@1.66.0/dist/config/chart-config.schema.json"
   },
   "meta_semantics": {
     "status": "passed",
@@ -14,8 +30,14 @@
     "failure_before_api_and_state_write": true
   },
   "editor_logic": {
+    "schemas_checked": {
+      "markdown": 22,
+      "table": 356,
+      "gravity_charts": 682
+    },
+    "negative_schema_cases": 5,
     "status": "passed",
-    "prepare_executions": 1056,
+    "prepare_executions": 1060,
     "recipe_states": 6,
     "physical_metrics": 14,
     "sensory_states": 41
@@ -25,6 +47,7 @@
     "api_version": "3",
     "charts": 18,
     "tabs": 3,
+    "update_only_preserves_ids": true,
     "partial_workbook_resume": true,
     "rerun_without_duplicates": true,
     "dashboard_update": true,

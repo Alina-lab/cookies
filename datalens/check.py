@@ -112,27 +112,32 @@ def api_contract_check(snapshot):
             else:
                 raise AssertionError("Не проверен частично созданный воркбук")
             state = apply(client, snapshot, "test-organization", state_path=state_path)
+            original_ids = {key: value["id"] for key, value in state["charts"].items()}
+            original_dashboard_id = state["dashboard_id"]
             assert state["api_readback_verified"] and not state["browser_verified"]
             dashboard = client.get.dashboard(by_id=state["dashboard_id"])
             layout_check(dashboard)
             assert len(dashboard.tabs) == 3
             before = Counter(calls)
-            apply(client, snapshot, "test-organization", state_path=state_path)
+            apply(client, snapshot, "test-organization", state_path=state_path, update_only=True)
             after = Counter(calls)
             assert all(after[m] == before[m] for m in ["createWorkbook", "createEditorChart", "createDashboard", "updateEditorChart", "updateDashboard"])
             # Изменение управляемого описания проверяет ветку обновления дашборда.
             changed = json.loads(json.dumps(snapshot))
             changed["config"]["tabs"][0]["note"] += " Проверка обновления."
-            apply(client, changed, "test-organization", state_path=state_path)
+            apply(client, changed, "test-organization", state_path=state_path, update_only=True)
             assert Counter(calls)["updateDashboard"] == 1
             # Изменение палитры проверяет обновление вкладок каждого Editor-чарта.
             changed["config"]["recipe_colours"]["nutriose"] = "#006AA0"
-            apply(client, changed, "test-organization", state_path=state_path)
+            apply(client, changed, "test-organization", state_path=state_path, update_only=True)
             assert Counter(calls)["updateEditorChart"] == 18
+            updated_state = json.loads(state_path.read_text())
+            assert {key: value["id"] for key, value in updated_state["charts"].items()} == original_ids
+            assert updated_state["dashboard_id"] == original_dashboard_id
             # Ручная правка управляемого чарта не должна молча перезаписываться.
             entries[state["charts"]["force_graph"]["id"]]["data"]["prepare"] += "\n// ручное изменение"
             try:
-                apply(client, changed, "test-organization", state_path=state_path)
+                apply(client, changed, "test-organization", state_path=state_path, update_only=True)
             except AssertionError as exc:
                 assert "изменён вручную" in str(exc)
                 failed = json.loads(state_path.read_text())
@@ -142,7 +147,7 @@ def api_contract_check(snapshot):
     count = Counter(calls)
     assert count["createEditorChart"] == 19 and count["createDashboard"] == 1 and count["createWorkbook"] == 1
     return {"status": "passed_with_mock_transport", "api_version": "3", "charts": 18, "tabs": 3,
-            "partial_workbook_resume": True, "rerun_without_duplicates": True, "dashboard_update": True, "editor_update": True, "manual_change_protected": True,
+            "update_only_preserves_ids": True, "partial_workbook_resume": True, "rerun_without_duplicates": True, "dashboard_update": True, "editor_update": True, "manual_change_protected": True,
             "real_api_called": False}
 
 
@@ -169,9 +174,41 @@ def meta_check(snapshot):
             "invalid_cases": len(invalid), "failure_before_api_and_state_write": True}
 
 
+def update_only_check(snapshot):
+    with tempfile.TemporaryDirectory(prefix="cookies-update-only-") as directory:
+        state_path = Path(directory) / "state.json"
+        for partial in [None, {"org_id": "test-organization", "workbook_id": "existing-workbook", "charts": {}}]:
+            if partial is not None:
+                write_json(state_path, partial)
+            before = state_path.read_bytes() if state_path.exists() else None
+            try:
+                apply(None, snapshot, "test-organization", state_path=state_path, update_only=True)
+            except ValueError as exc:
+                assert "--update-only" in str(exc)
+            else:
+                raise AssertionError("Неполное состояние должно останавливать обновление")
+            assert (state_path.read_bytes() if state_path.exists() else None) == before
+    return {"status": "passed", "incomplete_state_rejected_before_api": True}
+
+
+def theme_check(plan):
+    data = plan["requests"][-1]["body"]["entry"]["data"]
+    count = 0
+    for tab in data["tabs"]:
+        for item in tab["items"]:
+            background = item["data"].get("backgroundSettings")
+            if background:
+                pair = background["color"]
+                assert set(pair) == {"light", "dark"}
+                assert pair["light"] != pair["dark"], "Одинаковый светлый фон в тёмной теме"
+                count += 1
+    return {"status": "passed", "themed_items": count, "browser_verified": False}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--notebook", action="store_true", help="Также выполнить существующий notebook в новом ядре")
+    parser.add_argument("--gravity-schema", type=Path, help="Дополнительно проверить результаты официальной JSON Schema Gravity Charts")
     args = parser.parse_args()
     snapshot = prepare()
     before = (ROOT / "data" / "datalens_physical_comparison.csv").read_bytes()
@@ -180,16 +217,34 @@ def main():
     plan = make_plan(snapshot)
     # В плане нет подключения, датасета, публикации доступа или запроса секретов.
     assert {r["method"] for r in plan["requests"]} == {"createEditorChart", "createDashboard"}
-    node = subprocess.run(["node", str(HERE / "check_editor.js"), str(BUILD / "plan.json"), str(BUILD / "data.json")],
-                          check=True, capture_output=True, text=True)
-    editor = json.loads(node.stdout)
+    with tempfile.TemporaryDirectory(prefix="cookies-gravity-schema-") as directory:
+        results = Path(directory) / "results.json"
+        command = ["node", str(HERE / "check_editor.js"), str(BUILD / "plan.json"), str(BUILD / "data.json")]
+        if args.gravity_schema:
+            command.append(str(results))
+        node = subprocess.run(command, check=True, capture_output=True, text=True)
+        editor = json.loads(node.stdout)
+        official_schema = {"status": "not_run_in_this_command"}
+        if args.gravity_schema:
+            from jsonschema import Draft7Validator
+            schema_hash = hashlib.sha256(args.gravity_schema.read_bytes()).hexdigest()
+            assert schema_hash == "f76c96851794fd7132d7ab55f2b53c85f3937a8d530d74552837b60b1845db1e", "Нужна официальная схема @gravity-ui/charts 1.66.0 из инструкции"
+            schema = json.loads(args.gravity_schema.read_text(encoding="utf-8"))
+            validator = Draft7Validator(schema)
+            rendered = json.loads(results.read_text(encoding="utf-8"))
+            for case in rendered:
+                validator.validate(case["result"])
+            official_schema = {"status": "passed", "cases": len(rendered),
+                               "schema_sha256": schema_hash, "library_version": "1.66.0",
+                               "source": "https://unpkg.com/@gravity-ui/charts@1.66.0/dist/config/chart-config.schema.json"}
     meta = meta_check(snapshot)
     contract = api_contract_check(snapshot)
     notebook = notebook_check() if args.notebook else {"status": "not_run_in_this_command"}
     report = {
         "checked_at_utc": datetime.now(timezone.utc).isoformat(), "input_fingerprint": snapshot["fingerprint"],
         "materialized_csv": {"status": "passed", "rows": 70, "metrics": 14, "reproducible": True},
-        "meta_semantics": meta, "editor_logic": editor, "sdk_contract": contract, "notebook": notebook,
+        "theme": theme_check(plan), "update_only": update_only_check(snapshot),
+        "official_gravity_schema": official_schema, "meta_semantics": meta, "editor_logic": editor, "sdk_contract": contract, "notebook": notebook,
         "real_datalens_api": {"status": "not_run", "reason": "Доступ к аккаунту DataLens не предоставлен для этой проверки."},
         "browser": {"status": "not_run", "reason": "Нужны реальные объекты, аккаунт и проверка интерфейса."},
         "dashboard_created_by_this_check": False, "public_dashboard_url": None,

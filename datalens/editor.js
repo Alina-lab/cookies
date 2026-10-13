@@ -19,29 +19,46 @@ function fmt(value, digits = 2) {
     if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
     return Number(value).toFixed(digits).replace('.', ',');
 }
+// Таблица Editor: head[] и rows[].cells[]; Markdown: {markdown: string}.
+// Цвет текста не фиксируем: он наследует тему DataLens.
 function table(columns, rows) {
+    const precision = id => id.startsWith('n_') ? 0 : id === 'p_adjusted' ? 3
+        : VIEW === 'physical_table' && physicalMetric === 'water_activity' ? 4 : 2;
     return {
-        head: columns.map(([id, title, numeric = false]) => ({id, name: title, type: numeric ? 'number' : 'text',
-            ...(numeric ? {formatter: {precision: id.startsWith('n_') ? 0 : id === 'p_adjusted' ? 3
-                : VIEW === 'physical_table' && physicalMetric === 'water_activity' ? 4 : 2}} : {})})),
-        rows: rows.map(row => ({cells: columns.map(([key]) => row[key] === null || row[key] === undefined
-            ? {value: '—', type: 'text'} : {value: row[key]})})),
+        head: columns.map(([id, title, numeric = false]) => ({
+            id, name: title, type: numeric ? 'number' : 'text',
+            width: id === 'recipe_name_ru' ? 240 : numeric ? 140 : 260,
+            pinned: id === 'recipe_name_ru',
+            css: {'white-space': 'normal', 'font-weight': '600'},
+            ...(numeric ? {formatter: {precision: precision(id)}} : {}),
+        })),
+        rows: rows.map(row => ({cells: columns.map(([key, , numeric = false]) => ({
+            ...(row[key] === null || row[key] === undefined ? {value: '—', type: 'text'}
+                : {value: row[key], ...(numeric ? {formattedValue: fmt(row[key], precision(key))} : {})}),
+            css: {'white-space': 'normal'},
+        }))})),
     };
 }
-function chart(title, unit, categories, series, zeroMinimum = false) {
+function chart(title, unit, categories, series, zeroMinimum = false, categoryTitle = 'Рецептура') {
     return {
-        title: {text: title, style: {fontSize: '14px', fontWeight: 'normal'}},
+        chart: {margin: {top: 16, right: 36, bottom: 12, left: 12}},
+        title: {text: title, style: {fontSize: '16px', fontWeight: '600'}, maxRowCount: 2},
         series: {data: series},
-        xAxis: {type: 'linear', title: {text: unit}, grid: {enabled: true}, ...(zeroMinimum ? {min: 0} : {})},
-        yAxis: [{type: 'category', categories: categories.slice().reverse(), labels: {style: {fontSize: '11px'}, maxWidth: '45%'}}],
+        xAxis: {type: 'linear', visible: true, maxPadding: 0.15, title: {text: unit, style: {fontSize: '12px'}},
+            labels: {enabled: true, style: {fontSize: '12px'}}, grid: {enabled: true},
+            ...(zeroMinimum ? {min: 0} : {})},
+        yAxis: [{type: 'category', visible: true, categories: categories.slice().reverse(),
+            title: {text: categoryTitle, style: {fontSize: '12px'}},
+            labels: {enabled: true, style: {fontSize: '12px'}, maxWidth: 340}}],
         legend: {enabled: false},
     };
 }
 function bars(rows, valueField, title, unit, zeroMinimum = false) {
     const data = rows.map(r => ({x: r[valueField], y: r.recipe_name_ru, color: colour(r.recipe_id),
-        label: fmt(r[valueField], r.metric_id === 'water_activity' ? 4 : 2), custom: {recipe_id: r.recipe_id, metric_id: r.metric_id || null}}));
+        label: fmt(r[valueField], r.metric_id === 'water_activity' ? 4 : 2),
+        custom: {recipe_id: r.recipe_id, metric_id: r.metric_id || null}}));
     return chart(title, unit, rows.map(r => r.recipe_name_ru), [{type: 'bar-y', name: title, data,
-        grouping: false, dataLabels: {enabled: true}}], zeroMinimum);
+        grouping: false, dataLabels: {enabled: true, inside: false, style: {fontSize: '12px'}}}], zeroMinimum);
 }
 function physicalRows(metric) {
     const rows = ordered(DATA.physical.filter(r => r.metric_id === metric && selected(r)));
@@ -58,12 +75,12 @@ function sensoryRows() {
 let result;
 if (VIEW === 'kpi_max') {
     const max = Math.max(...DATA.recipes.map(r => r.sucrose_reduction_pct));
-    result = {markdown: `# ${fmt(max)}%\n\nМаксимальное **исследованное** снижение добавленной сахарозы. Не предел допустимой замены.`};
+    result = {markdown: `## ${fmt(max)}%\n\nМаксимальное **исследованное** снижение добавленной сахарозы. Не предел допустимой замены.`};
 } else if (VIEW === 'kpi_control') {
     const standard = DATA.recipes.find(r => r.recipe_id === 'control');
-    result = {markdown: `# ${fmt(standard.sucrose_g_per_100g_flour)} г\n\nСахароза стандартной рецептуры **на 100 г муки**.`};
+    result = {markdown: `## ${fmt(standard.sucrose_g_per_100g_flour)} г\n\nСахароза стандартной рецептуры **на 100 г муки**.`};
 } else if (VIEW === 'kpi_variants') {
-    result = {markdown: `# ${DATA.recipes.filter(r => r.recipe_id !== 'control').length} варианта\n\nПлюс стандартная рецептура. Тип и дозировка заменителя различаются.`};
+    result = {markdown: `## ${DATA.recipes.filter(r => r.recipe_id !== 'control').length} варианта\n\nПлюс стандартная рецептура. Тип и дозировка заменителя различаются.`};
 } else if (VIEW === 'recipes_table') {
     const rows = ordered(DATA.recipes.filter(r => selected(r)));
     result = table([
@@ -83,17 +100,20 @@ if (VIEW === 'kpi_max') {
     const batches = DATA.batches.filter(r => r.metric_id === 'breaking_strength_n' && ids.includes(r.recipe_id));
     const intervals = rows.filter(r => r.mean_ci_low !== null && r.mean_ci_high !== null).map(r => ({
         type: 'line', name: `${r.recipe_name_ru} · отдельный 95% t-интервал`, color: colour(r.recipe_id),
-        lineWidth: 2, marker: {enabled: false},
+        lineWidth: 2, marker: {enabled: false}, dataLabels: {enabled: false},
+        legend: {groupId: 'mean_intervals', itemText: 'Отдельный 95% t-интервал среднего'},
         data: [{x: r.mean_ci_low, y: r.recipe_name_ru}, {x: r.mean_ci_high, y: r.recipe_name_ru}],
     }));
     const series = intervals.concat([
-        {type: 'scatter', name: 'Три партийных средних на рецептуру',
+        {type: 'scatter', name: 'Три партийных средних на рецептуру', dataLabels: {enabled: false},
             data: batches.map(r => ({x: r.batch_mean, y: r.recipe_name_ru, radius: 3, color: colour(r.recipe_id),
                 custom: {batch_id: r.batch_id}}))},
         {type: 'scatter', name: 'Среднее рецептуры', symbolType: 'diamond',
-            data: rows.map(r => ({x: r.value, y: r.recipe_name_ru, radius: 6, color: colour(r.recipe_id)}))},
+            dataLabels: {enabled: true, style: {fontSize: '12px'}},
+            data: rows.map(r => ({x: r.value, y: r.recipe_name_ru, label: fmt(r.value), radius: 6, color: colour(r.recipe_id)}))},
     ]);
     result = chart('Сила разрушения: партии, средние и условные 95% t-интервалы', 'Н', rows.map(r => r.recipe_name_ru), series, true);
+    result.legend = {enabled: true, position: 'bottom', itemStyle: {fontSize: '12px'}};
 } else if (VIEW === 'force_table' || VIEW === 'physical_table') {
     const rows = physicalRows(VIEW === 'force_table' ? 'breaking_strength_n' : physicalMetric).map(r => ({...r,
         relative_display: fmt(r.relative_delta_pct) + (r.relative_delta_pct === null ? '' : '%'),
@@ -133,15 +153,18 @@ if (VIEW === 'kpi_max') {
     const differences = VIEW === 'sensory_delta';
     const groups = ordered(DATA.recipes).filter(r => selected(r) && (!differences || r.recipe_id !== 'control'));
     const series = groups.map(g => ({type: 'scatter', name: g.recipe_name_ru, color: colour(g.recipe_id),
+        dataLabels: {enabled: attributes.length === 1, style: {fontSize: '12px'}},
         data: rows.filter(r => r.recipe_id === g.recipe_id).map(r => ({
             x: differences ? r.delta_vs_control_points : r.published_mean, y: r.metric_label_ru, radius: 4,
+            label: fmt(differences ? r.delta_vs_control_points : r.published_mean),
             custom: {metric_id: r.metric_id, data_status: 'published_summary_only'},
         })),
     }));
     result = chart(differences ? 'Разности опубликованных сенсорных средних' : 'Опубликованные сенсорные средние',
-        differences ? 'пункты шкалы 0–100 относительно стандарта' : 'интенсивность по шкале 0–100', attributes, series);
-    result.legend = {enabled: true};
+        differences ? 'пункты шкалы 0–100 относительно стандарта' : 'интенсивность по шкале 0–100', attributes, series, false, 'Сенсорный признак');
+    result.legend = {enabled: true, position: 'bottom', itemStyle: {fontSize: '12px'}};
     if (!differences) {result.xAxis.min = 0; result.xAxis.max = 100;}
+    else {result.xAxis.plotLines = [{value: 0, color: '#737373', width: 1, dashStyle: 'Dash'}];}
 } else if (VIEW === 'sensory_table') {
     result = table([
         ['metric_label_ru', 'Сенсорный признак'], ['recipe_name_ru', 'Рецептура'],

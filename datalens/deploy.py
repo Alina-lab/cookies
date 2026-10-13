@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from datalens_sdk import DashboardChartTab, DashboardTab, DataLensClientYC, EntryLocation, StaticYCIAMAuthProvider
+from datalens_sdk.domain.dashboard_types import ThemedColor
 from datalens_sdk.converter.dashboard import DashboardConverter
 from datalens_sdk.converter.editor_chart import EditorChartConverter
 
@@ -125,9 +126,9 @@ def dashboard_builder(client, snapshot, charts, location):
             entries = [DashboardChartTab(chart=charts[key], title=TAB_LABELS.get(key, descriptions[key]["title"]),
                                          description=descriptions[key]["title"], default=(i == 0))
                        for i, key in enumerate(group["charts"])]
-            tab.add_chart_group(entries, item_id=group["key"], at=tuple(group["at"]), background="#FFFFFF", border_radius=8)
-        tab.add_text(spec["note"], item_id=spec["key"] + "_note", at=tuple(spec["note_at"]), background="#F3F4F6", auto_height=False)
-        tab.add_text(spec["footer"], item_id=spec["key"] + "_footer", at=tuple(spec["footer_at"]), background="#F3F4F6", auto_height=False)
+            tab.add_chart_group(entries, item_id=group["key"], at=tuple(group["at"]), background=ThemedColor(light="#FFFFFF", dark="#343535"), border_radius=8)
+        tab.add_text(spec["note"], item_id=spec["key"] + "_note", at=tuple(spec["note_at"]), background=ThemedColor(light="#F3F4F6", dark="#292A2B"), auto_height=False, border_radius=8)
+        tab.add_text(spec["footer"], item_id=spec["key"] + "_footer", at=tuple(spec["footer_at"]), background=ThemedColor(light="#F3F4F6", dark="#292A2B"), auto_height=False, border_radius=8)
         builder.add_tab(tab)
     return builder.description("Опубликованный эксперимент: пять рецептур, три производственные партии; не доказательство эквивалентности.").settings(hide_tabs=False, silent_loading=True)
 
@@ -159,9 +160,15 @@ def save_state(path, state):
     temporary.replace(path)
 
 
-def apply(client, snapshot, org_id, workbook_id="", state_path=STATE):
+def apply(client, snapshot, org_id, workbook_id="", state_path=STATE, update_only=False):
     preflight(snapshot)  # До сети и изменения локального состояния.
     state = json.loads(state_path.read_text()) if state_path.exists() else {"org_id": org_id, "charts": {}}
+    if update_only:
+        required = {c["key"] for c in snapshot["config"]["charts"]}
+        if (not state.get("workbook_id") or not state.get("dashboard_id")
+                or not required.issubset(state.get("charts", {}))
+                or any(not state["charts"][key].get("id") for key in required)):
+            raise ValueError("Для --update-only нужно сохранённое состояние воркбука, дашборда и всех чартов; восстановите .state.json")
     assert state["org_id"] == org_id, "Состояние относится к другой организации"
     assert not workbook_id or not state.get("workbook_id") or workbook_id == state["workbook_id"], "Воркбук не совпадает с локальным состоянием"
     state.update({"status": "applying", "api_readback_verified": False, "browser_verified": False,
@@ -231,7 +238,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Создать/обновить объекты через официальный API; без флага только локальный план")
     parser.add_argument("--export-tabs", action="store_true", help="Также выгрузить вкладки Editor в отдельные JSON/JS-файлы для ручной сборки")
+    parser.add_argument("--update-only", action="store_true", help="Только обновить существующие ID: при неполном состоянии остановиться до API")
     args = parser.parse_args()
+    if args.update_only and not args.apply:
+        parser.error("--update-only используется вместе с --apply")
     assert version("datalens-sdk") == "3.2.0", "Установите зафиксированный SDK из datalens/requirements.txt"
     snapshot = prepare()
     plan = make_plan(snapshot)
@@ -254,7 +264,7 @@ def main():
     options = {"auth": auth} if auth else {}  # При отсутствии токена SDK использует yc CLI.
     try:
         with DataLensClientYC(**options) as client:
-            state = apply(client, snapshot, org_id, os.environ.get("DATALENS_WORKBOOK_ID", ""))
+            state = apply(client, snapshot, org_id, os.environ.get("DATALENS_WORKBOOK_ID", ""), update_only=args.update_only)
     except Exception as exc:
         # Тело ошибки API и HTTP-заголовки не печатаем: они могут содержать данные авторизации.
         raise SystemExit(f"Сборка не завершена ({type(exc).__name__}). Проверьте доступ, конфигурацию и локальное состояние; секреты в лог не записаны.") from None
