@@ -114,7 +114,7 @@ class CookiesAppTests(unittest.TestCase):
         candidates = self.tables["candidate_comparison"].sort_values("recipe_order")
         self.assertEqual(table["Рецептура"].tolist(), candidates.recipe_name_ru.tolist())
         self.assertEqual(table["Изменение силы, %"].tolist(), candidates.breaking_relative_delta_pct.tolist())
-        self.assertIn("Общая масса ингредиентов больше", table.iloc[2, 3])
+        self.assertIn("общая масса ингредиентов больше", table.iloc[2, 3])
         for metric, value in [("length_mm", "7,87%"), ("penetration_resistance_ns", "32,24%")]:
             physical = self.tables["physical_recipe_summary"]
             delta = physical.query("recipe_id == 'fibruline' and metric_id == @metric").relative_delta_pct.iloc[0]
@@ -166,7 +166,7 @@ class CookiesAppTests(unittest.TestCase):
         self.assertAlmostEqual(loaded.iloc[1, 1], 35.11035653650255)
         self.assertTrue(loaded["Изменение силы, %"].lt(0).all())
 
-    def test_paths_and_application_dependencies(self):
+    def test_paths_are_relative_to_app(self):
         previous = Path.cwd()
         with tempfile.TemporaryDirectory() as folder:
             try:
