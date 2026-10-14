@@ -69,15 +69,19 @@ class CookiesAppTests(unittest.TestCase):
         at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
         self.healthy(at)
         html = html_bodies(at)
-        self.assertIn("<h1>Cookies</h1>", html)
+        self.assertIn("<h1>Печенье</h1>", html)
+        self.assertIn("Как снижение сахарозы повлияло на вкус и структуру", html)
+        self.assertIn("Производители ищут способы уменьшить добавленный сахар", html)
+        self.assertNotIn("ПРОЕКТ № 3", html)
         self.assertEqual(len(at.metric), 0)
         self.assertEqual(re.findall(r'data-kpi="[^"]+">([^<]+)', html), ["35,11%", "4"])
-        self.assertIn("не образцы эксперимента", html)
+        self.assertNotIn("<figcaption>", html)
+        self.assertNotIn("Иллюстрация для проекта · не образцы эксперимента", html)
         self.assertEqual(len(at.dataframe), 0)
         self.assertEqual(len(at.get("download_button")), 0)
         sugar, force = plot_specs(at)
         self.assertEqual(sugar["layout"]["xaxis"]["title"]["text"], "Снижение сахарозы, %")
-        self.assertEqual(force["layout"]["xaxis"]["title"]["text"], "Средняя сила разрушения, Н")
+        self.assertEqual(force["layout"]["xaxis"]["title"]["text"], "Средняя сила<br>разрушения, Н")
         self.assertEqual(len(sugar["data"][0]["x"]), 4)
         self.assertEqual(len(force["data"][0]["x"]), 5)
         self.assertNotIn("Стандартная", sugar["data"][0]["y"])
@@ -90,6 +94,15 @@ class CookiesAppTests(unittest.TestCase):
         self.assertEqual(sugar["data"][0]["marker"]["color"], list(app.PALETTE.values())[1:])
         self.assertEqual(sugar["data"][0]["type"], "bar")
         self.assertEqual(force["data"][0]["type"], "scatter")
+        for fig in [sugar, force]:
+            self.assertEqual(fig["layout"]["yaxis"]["ticklabelstandoff"], 16)
+            self.assertGreaterEqual(fig["layout"]["height"], 410)
+            self.assertGreaterEqual(fig["layout"]["font"]["size"], 14)
+        summary = re.search(r'<div class="takeaway">.*?<p>(.*?)</p>', html).group(1)
+        for value in ["22,11–35,11%", "27,35%", "27,62 пункта", "34,84%", "-9,15%"]:
+            self.assertIn(value, summary)
+        for term in ["согласовать требования к качеству", "в трёх независимых партиях"]:
+            self.assertIn(term, html)
         for term in ["столовый сахар", "тонком кишечнике", "кукурузного крахмала", "Инулин из цикория"]:
             self.assertIn(term, html)
         self.assertEqual(html.count('class="ingredient-card"'), 3)
@@ -109,7 +122,12 @@ class CookiesAppTests(unittest.TestCase):
         candidates = self.tables["candidate_comparison"].sort_values("recipe_order")
         self.assertEqual(table["Рецептура"].tolist(), candidates.recipe_name_ru.tolist())
         self.assertEqual(table["Изменение силы, %"].tolist(), candidates.breaking_relative_delta_pct.tolist())
-        self.assertIn("Масса рецепта выше", table.iloc[2, 3])
+        self.assertIn("Большая масса ингредиентов усложняет сравнение", table.iloc[2, 3])
+        for metric, value in [("length_mm", "7,87%"), ("penetration_resistance_ns", "32,24%")]:
+            physical = self.tables["physical_recipe_summary"]
+            delta = physical.query("recipe_id == 'fibruline' and metric_id == @metric").relative_delta_pct.iloc[0]
+            self.assertEqual(app.number(abs(delta)) + "%", value)
+            self.assertIn(value, html)
         figures = plot_specs(at)
         self.assertEqual(len(figures), 1)
         taste = figures[0]
@@ -121,12 +139,18 @@ class CookiesAppTests(unittest.TestCase):
         self.assertAlmostEqual(taste["data"][0]["x"][0], 5.66875)
         self.assertAlmostEqual(taste["data"][1]["x"][0], 5.9375)
         self.assertIn("пункты шкалы 0–100", taste["layout"]["xaxis"]["title"]["text"])
+        self.assertEqual(taste["layout"]["yaxis"]["ticklabelstandoff"], 16)
+        self.assertEqual(taste["layout"]["height"], 490)
+        self.assertEqual(taste["layout"]["bargroupgap"], 0.24)
+        self.assertEqual(taste["layout"]["font"]["size"], 14)
         self.assertIn("а не предпочтения покупателей", html)
         self.assertEqual(re.findall(r'data-recipe-id="([^"]+)', html), ["promitor", "fibruline", "nutriose"])
         for value in ["35,11%", "−9,15%", "+5,67 / +5,94"]:
             self.assertIn(value.replace("−", "-"), html)
-        for term in ["Усилие излома и подгорелый вкус", "Размеры и сопротивление проколу", "Усилие излома и высоту",
-                     "Сохранение всех свойств стандартного печенья пока не подтверждено"]:
+        self.assertEqual(html.count('class="recommendation-story"'), 3)
+        for term in ["27,35%", "27,62 пункта", "34,84%", "24,04%", "32,24%", "7,87%",
+                     "В новых партиях проверьте силу разрушения", "Проверьте размеры и сопротивление проникновению",
+                     "Повторите испытания силы разрушения", "Ни один вариант пока не подтверждён как полноценная замена стандарта"]:
             self.assertIn(term, html)
         self.assertNotIn("doi.org", html)
         self.assertEqual(len(at.get("download_button")), 1)

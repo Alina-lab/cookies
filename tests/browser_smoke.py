@@ -21,6 +21,8 @@ def check_page(page, plots, points):
     )
     page.evaluate("document.fonts.ready")
     assert page.locator('[data-testid="stException"]').count() == 0
+    expect(page).to_have_title("Печенье · снижение сахарозы")
+    assert page.get_by_text("ПРОЕКТ № 3", exact=True).count() == 0
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
     assert page.locator('[data-testid="stMultiSelect"], [data-testid="stSelectbox"], [data-testid="stExpander"], [data-testid="stMetric"]').count() == 0
     # Исследовательский подвал убран; источники открываются по запросу.
@@ -46,6 +48,22 @@ def check_chart_labels(page):
             return Math.min(t.right,r.right)>Math.max(t.left,r.left) && Math.min(t.bottom,r.bottom)>Math.max(t.top,r.top);
         }""")
         assert not overlap, "Легенда перекрывает заголовок"
+        # Проверяем реальное расстояние от названий до области построения.
+        label_gap = graph.evaluate("""e => {
+            const p=e.querySelector('.js-plotly-plot'), svg=e.querySelector('.main-svg').getBoundingClientRect();
+            return svg.left+p._fullLayout._size.l-Math.max(...[...e.querySelectorAll('.ytick text')].map(t=>t.getBoundingClientRect().right));
+        }""")
+        assert label_gap >= 12, f"Названия слишком близко к графику: {label_gap:.1f} px"
+        assert graph.evaluate("e=>e.querySelector('.js-plotly-plot')._fullLayout.font.size") >= 14
+        if graph.locator('.barlayer .trace').count() == 2:
+            gaps = graph.evaluate("""e => {
+                const groups=[...e.querySelectorAll('.barlayer .trace')].map(t=>[...t.querySelectorAll('.point path')].map(p=>p.getBoundingClientRect()));
+                const within=groups[0].map((a,i)=>{const b=groups[1][i]; return Math.max(a.top,b.top)-Math.min(a.bottom,b.bottom);});
+                const between=groups[0].slice(1).map((a,i)=>Math.min(a.top,groups[1][i+1].top)-Math.max(groups[0][i].bottom,groups[1][i].bottom));
+                return {within:Math.min(...within), between:Math.min(...between)};
+            }""")
+            assert gaps['within'] >= 5, gaps
+            assert gaps['between'] >= 20, gaps
 
 
 def check_about(page):
@@ -87,11 +105,12 @@ def run(executable=None, screenshots=None):
         for width, height in [(1440, 1100), (1024, 900), (390, 844)]:
             page.set_viewport_size({"width": width, "height": height})
             page.get_by_text("Результаты", exact=True).click()
-            page.get_by_role("heading", name="Cookies", exact=True).wait_for()
+            page.get_by_role("heading", name="Печенье", exact=True).wait_for()
             check_page(page, 2, [4, 5])
             expect(page.locator(".hero-kpi-value")).to_have_text(["35,11%", "4"])
             expect(page.locator(".ingredient-card")).to_have_count(3)
             expect(page.locator(".hero-art img")).to_have_attribute("alt", "Иллюстрация: песочное печенье на светлом льне")
+            expect(page.locator(".hero-art figcaption")).to_have_count(0)
             page.wait_for_function("[...document.querySelectorAll('.hero-art img, .ingredient-icon')].every(e=>e.complete && e.naturalWidth>0)")
             assert page.locator(".hero").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width == 390 else 2)
             assert page.locator(".ingredient-grid").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width == 390 else 3)
@@ -114,6 +133,10 @@ def run(executable=None, screenshots=None):
             expect(page.locator(".recommendation")).to_have_count(3)
             assert page.locator(".recommendation").evaluate_all("es=>es.map(e=>e.dataset.recipeId)") == ["promitor", "fibruline", "nutriose"]
             expect(page.locator(".recommendation-result")).to_have_text(["35,11%", "-9,15%", "+5,67 / +5,94"])
+            expect(page.locator(".recommendation-story")).to_have_count(3)
+            if width != 390:
+                heights=page.locator('.recommendation').evaluate_all('es=>es.map(e=>e.getBoundingClientRect().height)')
+                assert max(heights)-min(heights) < 2, heights
             assert page.locator(".recommendation-grid").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width == 390 else 3)
             check_chart_labels(page)
             assert page.locator(".js-plotly-plot").evaluate("e=>e.data.map(t=>t.name)") == ["Горечь", "Подгорелый вкус"]
@@ -142,6 +165,9 @@ def run(executable=None, screenshots=None):
             # Два кадра дают браузеру завершить отрисовку canvas таблицы.
             page.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))")
             screenshot(page, output, f"candidates-{width}.png")
+            if output:
+                page.locator('.takeaway').scroll_into_view_if_needed()
+                page.screenshot(path=str(output/f"recommendations-{width}.png"))
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
         assert not errors, errors
         print("Chromium: обе страницы, иллюстрация и иконки, карточки, три графика, таблица, источники и CSV проверены на 1440/1024/390 px; ошибок JavaScript нет.")
@@ -151,6 +177,6 @@ def run(executable=None, screenshots=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--browser-executable", help="Необязательно: путь к установленному Chromium")
-    parser.add_argument("--screenshots", help="Папка для шести настоящих скриншотов")
+    parser.add_argument("--screenshots", help="Папка для скриншотов страниц и карточек рекомендаций")
     args = parser.parse_args()
     run(args.browser_executable, args.screenshots)

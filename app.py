@@ -15,10 +15,10 @@ PALETTE = {"control": "#7B7A74", "nutriose": "#A96934", "promitor": "#A24F3A",
 PAGES = ["Результаты", "Следующие испытания"]
 SENSORY = {"sensory_flavour_bitter": "Горечь", "sensory_flavour_burnt": "Подгорелый вкус"}
 FEATURES = {
-    "nutriose": "Меньше изменений горечи и подгорелого вкуса.",
-    "promitor": "Подгорелый вкус сильнее, чем у стандарта.",
-    "orafti": "Масса рецепта выше; сначала уточнить состав.",
-    "fibruline": "Выше сопротивление проколу; размеры меньше.",
+    "nutriose": "Горечь и подгорелый вкус изменились меньше всего.",
+    "promitor": "Подгорелый вкус усилился на 27,62 пункта.",
+    "orafti": "Большая масса ингредиентов усложняет сравнение.",
+    "fibruline": "Печенье стало короче, а сопротивление проколу выросло.",
 }
 FILES = {"recipes": (5, ["recipe_id"]),
          "physical_recipe_summary": (75, ["recipe_id", "metric_id"]),
@@ -87,7 +87,7 @@ def force_rows(tables):
     return tables["physical_recipe_summary"].query("metric_id == 'breaking_strength_n'").sort_values("recipe_order")
 
 
-def chart_style(fig, title, unit, names, height=365):
+def chart_style(fig, title, unit, names, height=410):
     labels = [name.replace("Кукурузный декстрин №", "Кукурузный декстрин<br>№")
               .replace("Более растворимый инулин", "Более растворимый<br>инулин")
               .replace("Длинноцепочечный инулин", "Длинноцепочечный<br>инулин") for name in names]
@@ -95,11 +95,12 @@ def chart_style(fig, title, unit, names, height=365):
         template="plotly_white", title={"text": title, "font": {"size": 18}}, height=height,
         font={"family": "Manrope, sans-serif", "size": 14, "color": "#29241F"},
         paper_bgcolor="#FFFDF8", plot_bgcolor="#FFFDF8", separators=", ",
-        margin={"l": 8, "r": 32, "t": 58, "b": 52},
+        margin={"l": 16, "r": 44, "t": 58, "b": 58},
         hoverlabel={"bgcolor": "#FFFDF8", "font_color": "#29241F"},
         xaxis={"title": unit, "gridcolor": "#E9E1D5", "automargin": True, "zeroline": False},
         yaxis={"categoryorder": "array", "categoryarray": names, "autorange": "reversed",
-               "tickmode": "array", "tickvals": names, "ticktext": labels, "automargin": True, "showgrid": False},
+               "tickmode": "array", "tickvals": names, "ticktext": labels, "ticklabelstandoff": 16,
+               "automargin": True, "showgrid": False},
         legend={"orientation": "h", "y": 1.03, "x": 0},
     )
     return fig
@@ -110,12 +111,14 @@ def bar_chart(rows, field, title, unit):
         x=rows[field].tolist(), y=rows.recipe_name_ru.tolist(), orientation="h",
         marker_color=rows.recipe_id.map(PALETTE).tolist(),
         text=[number(value) for value in rows[field]], textposition="outside", cliponaxis=False,
+        texttemplate="\u2002%{text}",
         customdata=[[number(value), unit] for value in rows[field]],
         hovertemplate="%{y}<br><b>%{customdata[0]} %{customdata[1]}</b><extra></extra>",
     ))
     chart_style(fig, title, unit, rows.recipe_name_ru.tolist())
     fig.update_xaxes(range=[0, rows[field].max() * 1.20])
     fig.update_traces(marker_line_width=0)
+    fig.update_layout(bargap=0.42)
     return fig
 
 
@@ -129,7 +132,7 @@ def force_chart(tables):
         customdata=[[number(value)] for value in values],
         hovertemplate="%{y}<br><b>%{customdata[0]} Н</b><extra></extra>",
     ))
-    chart_style(fig, "Как изменилось усилие излома?", "Средняя сила разрушения, Н", rows.recipe_name_ru.tolist())
+    chart_style(fig, "Как изменилось усилие излома?", "Средняя сила<br>разрушения, Н", rows.recipe_name_ru.tolist())
     fig.update_xaxes(range=[0, values.max() * 1.22])
     fig.add_vline(x=values.iloc[0], line_color=PALETTE["control"], line_dash="dot", line_width=1)
     return fig
@@ -145,12 +148,12 @@ def sensory_chart(tables):
             name=label, marker={"color": rows.recipe_id.map(PALETTE).tolist(),
                                 "pattern": {"shape": "" if bitter else "/"}},
             text=[number(value, signed=True) for value in rows.delta_vs_control_points],
-            textposition="outside", cliponaxis=False,
+            textposition="outside", texttemplate="\u2002%{text}", cliponaxis=False,
             customdata=[[label, number(value, signed=True)] for value in rows.delta_vs_control_points],
             hovertemplate="%{y}<br>%{customdata[0]}: <b>%{customdata[1]} пункта</b><extra></extra>",
         ))
-    chart_style(fig, "Что изменилось во вкусе?", "Разница со стандартом,<br>пункты шкалы 0–100", rows.recipe_name_ru.tolist(), height=360)
-    fig.update_layout(barmode="group", bargap=0.3,
+    chart_style(fig, "Что изменилось во вкусе?", "Разница со стандартом,<br>пункты шкалы 0–100", rows.recipe_name_ru.tolist(), height=490)
+    fig.update_layout(barmode="group", bargap=0.36, bargroupgap=0.24,
                       margin={"t": 112}, title={"y": 0.98, "yanchor": "top"},
                       legend={"y": 1.04, "yanchor": "bottom", "x": 0, "xanchor": "left"})
     maximum = max(max(trace.x) for trace in fig.data)
@@ -194,7 +197,10 @@ def about_research():
     with st.popover("Об исследовании", key="about", type="tertiary"):
         st.markdown("### Об исследовании и источниках")
         st.markdown("Эксперимент Университета Рединга: стандартное печенье и четыре рецептуры с частичной заменой сахарозы.")
-        st.markdown("**Ограничения.** На каждую рецептуру — три независимые партии. Допустимые изменения качества не заданы. "
+        st.markdown("Для каждой рецептуры изготовили три независимые партии. Их средние дают предварительное сравнение, "
+                    "но этого мало, чтобы уверенно ожидать такое же поведение при массовом производстве. "
+                    "Нужны новые испытания и заранее согласованные требования к качеству.")
+        st.markdown("**Ограничения.** Допустимые изменения качества не заданы. "
                     "Все сахара готового печенья не измеряли. Индивидуальных сенсорных оценок нет; опубликованные средние "
                     "показывают интенсивность признаков, а не предпочтения покупателей.")
         st.markdown("[Научная статья](https://doi.org/10.1016/j.lwt.2022.113837) · "
@@ -213,10 +219,13 @@ def hero(tables):
     <section class="hero">
       <div class="hero-copy">
         <p class="eyebrow">Исследование рецептур / Университет Рединга</p>
-        <h1>Cookies</h1>
-        <p class="hero-question">Сахарозы меньше.<br>А что с печеньем?</p>
-        <p class="hero-intro">Четыре рецептуры с пищевыми волокнами и стандартное печенье.
-        Сравниваем, сколько сахара заменили и что изменилось в качестве.</p>
+        <h1>Печенье</h1>
+        <p class="hero-question">Как снижение сахарозы повлияло на вкус и структуру</p>
+        <p class="hero-intro">Производители ищут способы уменьшить добавленный сахар в печенье.
+        Но сахар влияет не только на сладость: от него зависят цвет, структура и поведение теста.</p>
+        <p class="hero-intro">В этом исследовании часть сахарозы заменили ингредиентами с пищевыми волокнами.
+        Сравнили четыре рецептуры со стандартом, чтобы понять, сколько сахарозы удалось убрать
+        и что изменилось во вкусе и структуре.</p>
         <div class="hero-kpis">
           <div class="hero-kpi"><span class="hero-kpi-value" data-kpi="reduction">{number(candidates.sucrose_reduction_pct.max())}%</span>
             <span class="hero-kpi-label">максимальное исследованное<br>снижение сахарозы</span></div>
@@ -226,7 +235,6 @@ def hero(tables):
       </div>
       <figure class="hero-art">
         <img src="{image}" alt="Иллюстрация: песочное печенье на светлом льне" width="600" height="600">
-        <figcaption>Иллюстрация для проекта · не образцы эксперимента</figcaption>
       </figure>
     </section>
     """)
@@ -250,8 +258,8 @@ def ingredient_cards():
         cards.append(f'<article class="ingredient-card"><img class="ingredient-icon" src="{uri}" alt="" aria-hidden="true">'
                      f'<div><h3>{title}</h3><p>{description}</p></div></article>')
     st.html('<section class="ingredients"><h2>Зачем заменять сахар пищевыми волокнами?</h2>'
-            '<p class="section-intro">Волокна не перевариваются в тонком кишечнике как обычный сахар. '
-            'Ими можно заменить часть сахара по массе, но прежний вкус и структура не гарантированы.</p>'
+            '<p class="section-intro">Волокна в этих ингредиентах не расщепляются пищеварительными ферментами в тонком кишечнике. '
+            'Ими можно заменить часть сахарозы по массе, но прежний вкус и структура не гарантированы.</p>'
             '<div class="ingredient-grid">' + "".join(cards) + '</div></section>')
 
 
@@ -268,10 +276,25 @@ def results_page(tables):
         show_plot(force_chart(tables), "force")
         st.html('<p class="chart-note"><strong>Ближе по среднему — длинноцепочечный инулин.</strong> '
                 'Сила разрушения — усилие излома. Меньшее значение само по себе не означает худшее качество. '
-                '<span class="note-detail">Средние трёх партий; прежнее качество пока не доказано.</span></p>')
+                '<span class="note-detail">Каждую рецептуру изготовили в трёх независимых партиях. '
+                'Для уверенного решения о производстве нужны новые испытания и согласованные требования к качеству.</span></p>')
+    candidates = tables["candidate_comparison"].set_index("recipe_id")
+    dextrin = candidates.loc["promitor"]
+    inulin = candidates.loc["fibruline"]
+    summary = (
+        f'В исследованных рецептурах добавленную сахарозу сократили на '
+        f'{number(candidates.sucrose_reduction_pct.min())}–{number(candidates.sucrose_reduction_pct.max())}% относительно стандарта. '
+        f'Кукурузный декстрин № 2 дал максимальное снижение — {number(dextrin.sucrose_reduction_pct)}%, '
+        f'но средняя сила разрушения была ниже на {number(-dextrin.breaking_relative_delta_pct)}%, '
+        f'а интенсивность подгорелого вкуса — выше на {number(dextrin.burnt_taste_delta_points)} пункта шкалы 0–100. '
+        f'Длинноцепочечный инулин дал снижение сахарозы на {number(inulin.sucrose_reduction_pct)}% '
+        f'при наименьшем отклонении средней силы разрушения ({number(inulin.breaking_relative_delta_pct, signed=True)}%), '
+        'но размеры и сопротивление проникновению тоже изменились. '
+        'Выбрать одну рецептуру по всем показателям пока нельзя. '
+        'Производству стоит согласовать требования к качеству и испытать варианты под свой приоритет.'
+    )
     st.html('<div class="takeaway"><span class="takeaway-label">Что это значит</span>'
-            '<p>Сахарозы в рецептах стало меньше, а усилие излома и вкус изменились. '
-            'Следующий шаг — испытать варианты под конкретную производственную задачу.</p></div>')
+            f'<p>{summary}</p></div>')
 
 
 def recommendation_cards(tables):
@@ -281,20 +304,33 @@ def recommendation_cards(tables):
     taste = candidates.index[(candidates.bitterness_delta_points.abs() == candidates.bitterness_delta_points.abs().min())
                              & (candidates.burnt_taste_delta_points.abs() == candidates.burnt_taste_delta_points.abs().min())][0]
     choices = [
-        (sugar, "Максимально сократить сахарозу", number(candidates.loc[sugar, "sucrose_reduction_pct"]) + "%",
-         "снижение добавленной сахарозы", "Усилие излома и подгорелый вкус в следующих партиях."),
-        (force, "Сохранить близкое усилие излома", number(candidates.loc[force, "breaking_relative_delta_pct"], signed=True) + "%",
-         "изменение средней силы разрушения", "Размеры и сопротивление проколу: они тоже изменились."),
-        (taste, "Меньше изменений вкуса", number(candidates.loc[taste, "bitterness_delta_points"], signed=True) + " / " +
+        (sugar, "Сильнее сократить сахарозу", number(candidates.loc[sugar, "sucrose_reduction_pct"]) + "%",
+         "снижение добавленной сахарозы",
+         f'Это максимальное снижение среди четырёх вариантов. Но средняя сила разрушения ниже стандарта на '
+         f'{number(-candidates.loc[sugar, "breaking_relative_delta_pct"])}%, '
+         f'а интенсивность подгорелого вкуса выше на {number(candidates.loc[sugar, "burnt_taste_delta_points"])} пункта.',
+         "В новых партиях проверьте силу разрушения и подгорелый вкус по согласованным требованиям."),
+        (force, "Сохранить похожую прочность", number(candidates.loc[force, "breaking_relative_delta_pct"], signed=True) + "%",
+         "изменение средней силы разрушения",
+         f'Сахарозы на {number(candidates.loc[force, "sucrose_reduction_pct"])}% меньше, '
+         'а средняя сила разрушения ближе к стандарту, чем у остальных вариантов. '
+         'При этом длина уменьшилась на 7,87%, а сопротивление проникновению выросло на 32,24%.',
+         "Проверьте размеры и сопротивление проникновению вместе с силой разрушения в новых партиях."),
+        (taste, "Меньше менять горечь и подгорелый вкус", number(candidates.loc[taste, "bitterness_delta_points"], signed=True) + " / " +
          number(candidates.loc[taste, "burnt_taste_delta_points"], signed=True),
-         "горечь / подгорелый вкус, пункты 0–100", "Усилие излома и высоту печенья при повторении."),
+         "горечь / подгорелый вкус, пункты 0–100",
+         'Эти изменения горечи и подгорелого вкуса меньше, чем у других заменителей. '
+         f'Но средняя сила разрушения ниже стандарта на {number(-candidates.loc[taste, "breaking_relative_delta_pct"])}%: '
+         'меньшие вкусовые сдвиги не означают сохранения структуры.',
+         "Повторите испытания силы разрушения, высоты печенья и вкусовых признаков."),
     ]
     cards = "".join(
         f'<article class="recommendation" data-recipe-id="{rid}" style="--recipe-color:{PALETTE[rid]}">'
         f'<p class="priority">{priority}</p><h3>{escape(candidates.loc[rid, "recipe_name_ru"])}</h3>'
         f'<div class="recommendation-result">{value}</div><p class="result-label">{label}</p>'
+        f'<p class="recommendation-story">{story}</p>'
         f'<p class="next-test"><strong>Проверить дальше</strong>{next_test}</p></article>'
-        for rid, priority, value, label, next_test in choices)
+        for rid, priority, value, label, story, next_test in choices)
     st.html('<section class="recommendations"><h2>Три направления следующих испытаний</h2>'
             '<div class="recommendation-grid">' + cards + '</div></section>')
 
@@ -306,9 +342,9 @@ def candidates_page(tables):
     comparison = comparison_table(tables)
     with st.container(key="comparison_panel"):
         st.dataframe(comparison, hide_index=True, width="stretch", row_height=46,
-                     column_config={"Рецептура": st.column_config.TextColumn(width="medium"),
-                                    "Снижение сахарозы, %": st.column_config.NumberColumn(format="%.2f"),
-                                    "Изменение силы, %": st.column_config.NumberColumn(format="%+.2f"),
+                     column_config={"Рецептура": st.column_config.TextColumn(width=210),
+                                    "Снижение сахарозы, %": st.column_config.NumberColumn(format="%.2f", width=174),
+                                    "Изменение силы, %": st.column_config.NumberColumn(format="%+.2f", width=152),
                                     "На что обратить внимание": st.column_config.TextColumn(width="large")})
     with st.container(key="taste_panel"):
         show_plot(sensory_chart(tables), "taste")
@@ -318,11 +354,13 @@ def candidates_page(tables):
     st.download_button("Скачать сравнение · CSV", csv_bytes(comparison), file_name="cookies_comparison.csv", mime="text/csv",
                        type="tertiary", key="download")
     st.html('<div class="takeaway"><span class="takeaway-label">Следующий шаг</span>'
-            '<p>Эти рецептуры стоит испытать дальше. Сохранение всех свойств стандартного печенья пока не подтверждено.</p></div>')
+            '<p>Выбор зависит от задачи: сильнее сократить сахарозу, сохранить похожую прочность или меньше изменить '
+            'горечь и подгорелый вкус. Ни один вариант пока не подтверждён как полноценная замена стандарта. '
+            'Перед внедрением нужно согласовать требования к качеству и повторить испытания.</p></div>')
 
 
 def main():
-    st.set_page_config(page_title="Cookies · исследование рецептур", page_icon="🍪", layout="wide")
+    st.set_page_config(page_title="Печенье · снижение сахарозы", page_icon="🍪", layout="wide")
     apply_design()
     try:
         tables = load_data()
@@ -330,7 +368,7 @@ def main():
         st.error(f"Не удалось открыть данные исследования: {exc}")
         st.stop()
     with st.container(key="topbar", horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
-        st.html('<div class="project-label">ПРОЕКТ № 3 <span>Аналитика рецептур</span></div>')
+        st.html('<div class="project-label">Аналитика рецептур</div>')
         about_research()
     with st.container(key="navigation"):
         page = st.radio("Страница", PAGES, horizontal=True, label_visibility="collapsed", key="page")

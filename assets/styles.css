@@ -17,10 +17,6 @@
 .project-label {
   font-size: 12px; font-weight: 700; letter-spacing: .13em; color: var(--caramel);
 }
-.project-label span {
-  margin-left: 14px; padding-left: 14px; border-left: 1px solid var(--line);
-  color: var(--muted); letter-spacing: .02em; font-weight: 500;
-}
 .st-key-navigation {margin-bottom: 8px;}
 .st-key-navigation [role="radiogroup"] {
   gap: 5px; padding: 5px; background: #EEE8DD; border-radius: 12px; width: fit-content;
@@ -39,6 +35,7 @@
 .hero h1 {font-family: Lora, Georgia, serif; font-weight: 600; font-size: 66px; line-height: 1.05; letter-spacing: -.05em; margin: 0 0 12px;}
 .hero-question {font-size: 26px; font-weight: 600; letter-spacing: -.035em; line-height: 1.25; margin: 0 0 12px;}
 .hero-intro {max-width: 510px; color: var(--muted); font-size: 14px; line-height: 1.65; margin: 0;}
+.hero-intro + .hero-intro {margin-top: 10px;}
 .hero-kpis {display: flex; gap: 30px; margin-top: 24px; align-items: flex-start;}
 .hero-kpi {display: flex; flex-direction: column; gap: 5px;}
 .hero-kpi + .hero-kpi {padding-left: 25px; border-left: 1px solid var(--line);}
@@ -46,7 +43,6 @@
 .hero-kpi-label {font-size: 11px; line-height: 1.5; color: var(--muted);}
 .hero-art {margin: 0; justify-self: end; width: min(100%, 390px);}
 .hero-art img {display: block; width: 100%; height: 310px; object-fit: cover; border-radius: 18px; object-position: 50% 48%;}
-.hero-art figcaption {font-size: 10px; margin-top: 7px; color: var(--muted); text-align: right;}
 .ingredients {margin: 0 0 18px;}
 .ingredients h2, .recommendations h2 {font-size: 18px; font-family: Manrope, sans-serif; font-weight: 650; letter-spacing: -.025em; margin: 0 0 8px;}
 .section-intro {font-size: 12px; line-height: 1.6; color: var(--muted); max-width: 800px; margin: 0 0 12px;}
@@ -81,11 +77,12 @@
   background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--recipe-color);
   border-radius: 14px; padding: 18px; display: flex; flex-direction: column;
 }
-.priority {font-size: 10px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .035em; margin: 0 0 12px;}
+.priority {font-size: 10px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .035em; margin: 0 0 12px; min-height: 30px;}
 .recommendation h3 {font-family: Manrope, sans-serif; font-size: 15px; line-height: 1.4; margin: 0 0 14px; min-height: 42px;}
 .recommendation-result {font-family: Lora, Georgia, serif; font-size: 30px; line-height: 1.2; letter-spacing: -.03em; color: var(--recipe-color);}
 .result-label {font-size: 11px; color: var(--muted); line-height: 1.55; margin: 5px 0 16px; min-height: 34px;}
-.next-test {font-size: 12px; line-height: 1.65; margin: auto 0 0; border-top: 1px solid var(--line); padding-top: 12px;}
+.recommendation-story {font-size: 12px; line-height: 1.7; margin: 0 0 18px;}
+.next-test {font-size: 12px; line-height: 1.65; margin: auto 0 0; border-top: 1px solid var(--line); padding-top: 12px; min-height: 90px;}
 .next-test strong {display: block; margin-bottom: 3px; font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .035em;}
 [data-testid="stPopoverBody"] {font-family: Manrope, sans-serif; max-width: 530px;}
 [data-testid="stPopoverBody"] p {font-size: 13px; line-height: 1.6;}
@@ -102,7 +99,6 @@
 @media (max-width: 740px) {
   .stMainBlockContainer {padding: 1rem 1rem 1.8rem;}
   .project-label {font-size: 10px; letter-spacing: .08em;}
-  .project-label span {display: none;}
   .hero {grid-template-columns: 1fr; gap: 20px; padding-top: 12px;}
   .hero h1 {font-size: 55px;}
   .hero-question {font-size: 25px;}
@@ -112,7 +108,6 @@
   .hero-kpi + .hero-kpi {padding-left: 20px;}
   .hero-art {justify-self: stretch; width: 100%;}
   .hero-art img {height: 215px; object-position: 50% 55%;}
-  .hero-art figcaption {font-size: 9px;}
   .ingredient-grid, .recommendation-grid {grid-template-columns: 1fr; gap: 10px;}
   .ingredient-card {padding: 13px; gap: 14px;}
   .ingredient-icon {width: 36px; height: 36px;}
@@ -123,8 +118,10 @@
   .page-heading h1 {font-size: 28px;}
   .recommendations h2 {font-size: 17px;}
   .recommendation h3 {min-height: unset; margin-bottom: 10px;}
+  .priority {min-height: unset;}
   .result-label {min-height: unset; margin-bottom: 12px;}
   .recommendation-result {font-size: 29px;}
+  .next-test {min-height: unset;}
   .takeaway {flex-direction: column; gap: 6px; padding: 12px 14px;}
   .st-key-navigation label {padding: 6px 10px;}
 }
