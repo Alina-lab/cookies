@@ -3,6 +3,7 @@
 import ast
 import hashlib
 import io
+import re
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,10 @@ from streamlit.testing.v1 import AppTest
 import app
 
 ROOT = Path(app.__file__).resolve().parent
+
+
+def html_bodies(at):
+    return " ".join(element.proto.body for element in at.get("html") if not element.proto.body.startswith("<style>"))
 
 
 def plot_specs(at):
@@ -51,7 +56,8 @@ class CookiesAppTests(unittest.TestCase):
             self.assertTrue(all(len(trace.get("x", [])) for trace in fig["data"]))
             self.assertTrue(fig["layout"]["xaxis"]["title"]["text"])
             self.assertNotIn("error_x", fig["data"][0])
-        captions = " ".join(element.value for element in at.caption)
+        self.assertEqual(len(at.get("popover")), 1)
+        captions = " ".join(element.value for element in [*at.caption, *at.markdown])
         for text in ["три независимые партии", "Допустимые изменения качества не заданы",
                      "Все сахара готового печенья не измеряли", "Rodriguez-Garcia et al., 2022",
                      "https://doi.org/10.17864/1947.000384",
@@ -62,8 +68,11 @@ class CookiesAppTests(unittest.TestCase):
     def test_results_page_kpis_and_two_charts(self):
         at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
         self.healthy(at)
-        self.assertEqual(at.title[0].value, "Что показало исследование?")
-        self.assertEqual([m.value for m in at.metric], ["35,11%", "4"])
+        html = html_bodies(at)
+        self.assertIn("<h1>Cookies</h1>", html)
+        self.assertEqual(len(at.metric), 0)
+        self.assertEqual(re.findall(r'data-kpi="[^"]+">([^<]+)', html), ["35,11%", "4"])
+        self.assertIn("не образцы эксперимента", html)
         self.assertEqual(len(at.dataframe), 0)
         self.assertEqual(len(at.get("download_button")), 0)
         sugar, force = plot_specs(at)
@@ -79,18 +88,20 @@ class CookiesAppTests(unittest.TestCase):
             self.assertAlmostEqual(actual, expected, places=2)
         self.assertEqual(force["data"][0]["marker"]["color"], list(app.PALETTE.values()))
         self.assertEqual(sugar["data"][0]["marker"]["color"], list(app.PALETTE.values())[1:])
-        text = " ".join(m.value for m in at.markdown)
-        self.assertIn("дополнительных партиях", text)
-        intro = next(m.value for m in at.markdown if "Зачем заменять сахар пищевыми волокнами?" in m.value)
-        self.assertLessEqual(len(intro.split()), 100)
-        for term in ["столовый сахар", "Пищевые волокна", "тонком кишечнике", "кукурузными декстринами", "из цикория"]:
-            self.assertIn(term, intro)
+        self.assertEqual(sugar["data"][0]["type"], "bar")
+        self.assertEqual(force["data"][0]["type"], "scatter")
+        for term in ["столовый сахар", "тонком кишечнике", "кукурузного крахмала", "Инулин из цикория"]:
+            self.assertIn(term, html)
+        self.assertEqual(html.count('class="ingredient-card"'), 3)
+        self.assertNotIn("Все сахара готового печенья не измеряли", html)
+        self.assertNotIn("doi.org", html)
 
     def test_candidates_table_taste_and_recommendations(self):
         at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
         at.radio(key="page").set_value("Следующие испытания").run()
         self.healthy(at)
-        self.assertEqual(at.title[0].value, "Какие рецептуры стоит испытывать?")
+        html = html_bodies(at)
+        self.assertIn("<h1>Какие рецептуры стоит испытывать?</h1>", html)
         self.assertEqual(len(at.metric), 0)
         self.assertEqual(len(at.dataframe), 1)
         self.assertEqual(at.dataframe[0].value.shape, (4, 4))
@@ -110,15 +121,14 @@ class CookiesAppTests(unittest.TestCase):
         self.assertAlmostEqual(taste["data"][0]["x"][0], 5.66875)
         self.assertAlmostEqual(taste["data"][1]["x"][0], 5.9375)
         self.assertIn("пункты шкалы 0–100", taste["layout"]["xaxis"]["title"]["text"])
-        captions = " ".join(m.value for m in at.caption)
-        self.assertIn("выраженность вкуса, а не предпочтения покупателей", captions)
-        text = " ".join(m.value for m in at.markdown)
-        for line in ["Если главное — сократить сахарозу: **Кукурузный декстрин № 2**",
-                     "Если важна близкая к стандарту сила разрушения: **Длинноцепочечный инулин**",
-                     "Если важны небольшие изменения горечи и подгорелого вкуса: **Кукурузный декстрин № 1**",
-                     "усилие излома и подгорелый вкус", "Размеры и сопротивление проколу",
-                     "усилие излома и высоту", "пока не подтверждает, что они сохраняют все свойства"]:
-            self.assertIn(line, text)
+        self.assertIn("а не предпочтения покупателей", html)
+        self.assertEqual(re.findall(r'data-recipe-id="([^"]+)', html), ["promitor", "fibruline", "nutriose"])
+        for value in ["35,11%", "−9,15%", "+5,67 / +5,94"]:
+            self.assertIn(value.replace("−", "-"), html)
+        for term in ["Усилие излома и подгорелый вкус", "Размеры и сопротивление проколу", "Усилие излома и высоту",
+                     "Сохранение всех свойств стандартного печенья пока не подтверждено"]:
+            self.assertIn(term, html)
+        self.assertNotIn("doi.org", html)
         self.assertEqual(len(at.get("download_button")), 1)
 
     def test_navigation_does_not_leave_hidden_old_content(self):
@@ -126,7 +136,7 @@ class CookiesAppTests(unittest.TestCase):
         for page in ["Следующие испытания", "Результаты", "Следующие испытания", "Результаты"]:
             at.radio(key="page").set_value(page).run()
             self.healthy(at)
-            self.assertEqual(len(at.title), 1)
+            self.assertEqual(html_bodies(at).count("<h1>"), 1)
             self.assertEqual(len(plot_specs(at)), 2 if page == "Результаты" else 1)
             self.assertEqual(len(at.dataframe), 0 if page == "Результаты" else 1)
 
@@ -155,7 +165,7 @@ class CookiesAppTests(unittest.TestCase):
                    if isinstance(node, (ast.Import, ast.ImportFrom))]
         modules = {node.module.split(".")[0] for node in imports if isinstance(node, ast.ImportFrom)}
         modules |= {name.name.split(".")[0] for node in imports if isinstance(node, ast.Import) for name in node.names}
-        self.assertLessEqual(modules, {"pathlib", "math", "pandas", "plotly", "streamlit"})
+        self.assertLessEqual(modules, {"pathlib", "math", "base64", "html", "pandas", "plotly", "streamlit"})
 
     def test_light_theme_contrast(self):
         theme = tomllib.loads((ROOT / ".streamlit" / "config.toml").read_text())["theme"]
@@ -167,7 +177,8 @@ class CookiesAppTests(unittest.TestCase):
             return sum(a * b for a, b in zip(linear, [0.2126, 0.7152, 0.0722]))
 
         for foreground, background in [(theme["textColor"], theme["backgroundColor"]),
-                                       ("#465874", theme["backgroundColor"]),
+                                       ("#6F6255", theme["backgroundColor"]),
+                                       ("#93562F", "#EFE8DA"),
                                        ("#FFFFFF", theme["primaryColor"])]:
             a, b = sorted([luminance(foreground), luminance(background)])
             self.assertGreaterEqual((b + 0.05) / (a + 0.05), 4.5)

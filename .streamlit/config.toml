@@ -1,10 +1,15 @@
 [theme]
 base = "light"
-primaryColor = "#147D92"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F3F6F9"
-textColor = "#172B4D"
-font = "sans serif"
+primaryColor = "#93562F"
+backgroundColor = "#F8F5EF"
+secondaryBackgroundColor = "#EEE8DD"
+textColor = "#29241F"
+font = "Manrope"
+headingFont = "Lora"
+borderColor = "#E3DACC"
+dataframeBorderColor = "#E3DACC"
+dataframeHeaderBackgroundColor = "#EEE8DD"
+dataframeHeaderTextColor = "#51483E"
 
 [browser]
 gatherUsageStats = false

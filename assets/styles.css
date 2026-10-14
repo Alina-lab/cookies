@@ -1,0 +1,136 @@
+@font-face {
+  font-family: Manrope; font-style: normal; font-weight: 200 800;
+  src: url("__MANROPE__") format("truetype"); font-display: swap;
+}
+@font-face {
+  font-family: Lora; font-style: normal; font-weight: 400 700;
+  src: url("__LORA__") format("truetype"); font-display: swap;
+}
+:root {
+  --cream: #F8F5EF; --paper: #FFFDF8; --ink: #29241F;
+  --muted: #6F6255; --caramel: #93562F; --line: #E3DACC;
+}
+.stMainBlockContainer {max-width: 1280px; padding: 1.7rem 3rem 2.8rem;}
+[data-testid="stHeader"] {background: transparent;}
+[data-testid="stAppViewContainer"] {font-family: Manrope, sans-serif;}
+.st-key-topbar {margin-bottom: .25rem;}
+.project-label {
+  font-size: 12px; font-weight: 700; letter-spacing: .13em; color: var(--caramel);
+}
+.project-label span {
+  margin-left: 14px; padding-left: 14px; border-left: 1px solid var(--line);
+  color: var(--muted); letter-spacing: .02em; font-weight: 500;
+}
+.st-key-navigation {margin-bottom: 8px;}
+.st-key-navigation [role="radiogroup"] {
+  gap: 5px; padding: 5px; background: #EEE8DD; border-radius: 12px; width: fit-content;
+}
+.st-key-navigation label {
+  border-radius: 9px; padding: 7px 12px; margin: 0; font-size: 13px; transition: background .15s;
+}
+.st-key-navigation label:has(input:checked), .st-key-navigation label:has([aria-checked="true"]) {
+  background: var(--paper); box-shadow: 0 1px 2px #29241f0a;
+}
+.hero {
+  display: grid; grid-template-columns: 1.2fr .8fr; align-items: center;
+  gap: 40px; padding: 20px 0 24px;
+}
+.eyebrow {font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px;}
+.hero h1 {font-family: Lora, Georgia, serif; font-weight: 600; font-size: 66px; line-height: 1.05; letter-spacing: -.05em; margin: 0 0 12px;}
+.hero-question {font-size: 26px; font-weight: 600; letter-spacing: -.035em; line-height: 1.25; margin: 0 0 12px;}
+.hero-intro {max-width: 510px; color: var(--muted); font-size: 14px; line-height: 1.65; margin: 0;}
+.hero-kpis {display: flex; gap: 30px; margin-top: 24px; align-items: flex-start;}
+.hero-kpi {display: flex; flex-direction: column; gap: 5px;}
+.hero-kpi + .hero-kpi {padding-left: 25px; border-left: 1px solid var(--line);}
+.hero-kpi-value {font-family: Lora, Georgia, serif; font-size: 40px; line-height: 1.1; letter-spacing: -.04em; color: var(--caramel);}
+.hero-kpi-label {font-size: 11px; line-height: 1.5; color: var(--muted);}
+.hero-art {margin: 0; justify-self: end; width: min(100%, 390px);}
+.hero-art img {display: block; width: 100%; height: 310px; object-fit: cover; border-radius: 18px; object-position: 50% 48%;}
+.hero-art figcaption {font-size: 10px; margin-top: 7px; color: var(--muted); text-align: right;}
+.ingredients {margin: 0 0 18px;}
+.ingredients h2, .recommendations h2 {font-size: 18px; font-family: Manrope, sans-serif; font-weight: 650; letter-spacing: -.025em; margin: 0 0 8px;}
+.section-intro {font-size: 12px; line-height: 1.6; color: var(--muted); max-width: 800px; margin: 0 0 12px;}
+.ingredient-grid {display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;}
+.ingredient-card {
+  display: flex; gap: 14px; align-items: flex-start; padding: 15px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 13px;
+}
+.ingredient-icon {width: 42px; height: 42px; flex-shrink: 0; fill: none; stroke: var(--caramel); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;}
+.ingredient-card h3 {font-family: Manrope, sans-serif; font-size: 13px; font-weight: 700; margin: 0 0 5px;}
+.ingredient-card p {font-size: 11px; line-height: 1.6; color: var(--muted); margin: 0;}
+.st-key-sugar_panel, .st-key-force_panel, .st-key-taste_panel {
+  background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 12px 10px 16px;
+}
+.st-key-taste_panel {margin-top: 8px;}
+.chart-note {font-size: 12px; line-height: 1.6; color: var(--muted); padding: 0 12px; margin: 0;}
+.chart-note strong {font-weight: 650; color: var(--ink);}
+.note-detail {display: block; margin-top: 4px; font-size: 11px;}
+.takeaway {
+  display: flex; gap: 22px; align-items: flex-start; margin-top: 16px;
+  border-left: 3px solid var(--caramel); padding: 13px 18px; background: #EFE8DA; border-radius: 0 12px 12px 0;
+}
+.takeaway-label {font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--caramel); white-space: nowrap; padding-top: 3px;}
+.takeaway p {font-size: 13px; line-height: 1.7; margin: 0;}
+.page-heading {margin: 18px 0 20px;}
+.page-heading h1 {font-family: Lora, Georgia, serif; font-size: 35px; line-height: 1.25; letter-spacing: -.035em; margin: 0 0 10px;}
+.page-heading > p:last-child {font-size: 13px; color: var(--muted); margin: 0;}
+.st-key-comparison_panel {border-radius: 12px; overflow: hidden;}
+.recommendations {margin-top: 20px;}
+.recommendation-grid {display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px;}
+.recommendation {
+  background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--recipe-color);
+  border-radius: 14px; padding: 18px; display: flex; flex-direction: column;
+}
+.priority {font-size: 10px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .035em; margin: 0 0 12px;}
+.recommendation h3 {font-family: Manrope, sans-serif; font-size: 15px; line-height: 1.4; margin: 0 0 14px; min-height: 42px;}
+.recommendation-result {font-family: Lora, Georgia, serif; font-size: 30px; line-height: 1.2; letter-spacing: -.03em; color: var(--recipe-color);}
+.result-label {font-size: 11px; color: var(--muted); line-height: 1.55; margin: 5px 0 16px; min-height: 34px;}
+.next-test {font-size: 12px; line-height: 1.65; margin: auto 0 0; border-top: 1px solid var(--line); padding-top: 12px;}
+.next-test strong {display: block; margin-bottom: 3px; font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .035em;}
+[data-testid="stPopoverBody"] {font-family: Manrope, sans-serif; max-width: 530px;}
+[data-testid="stPopoverBody"] p {font-size: 13px; line-height: 1.6;}
+@media (max-width: 1050px) {
+  .stMainBlockContainer {padding: 1.5rem 2rem 2rem;}
+  .hero {gap: 26px;}
+  .hero-art img {height: 290px;}
+  .hero h1 {font-size: 58px;}
+  .hero-question {font-size: 24px;}
+  .ingredient-card {padding: 12px; gap: 10px;}
+  .ingredient-icon {width: 32px; height: 32px;}
+  .recommendation {padding: 14px;}
+}
+@media (max-width: 740px) {
+  .stMainBlockContainer {padding: 1rem 1rem 1.8rem;}
+  .project-label {font-size: 10px; letter-spacing: .08em;}
+  .project-label span {display: none;}
+  .hero {grid-template-columns: 1fr; gap: 20px; padding-top: 12px;}
+  .hero h1 {font-size: 55px;}
+  .hero-question {font-size: 25px;}
+  .hero-intro {font-size: 13px;}
+  .hero-kpis {margin-top: 18px; gap: 24px;}
+  .hero-kpi-value {font-size: 35px;}
+  .hero-kpi + .hero-kpi {padding-left: 20px;}
+  .hero-art {justify-self: stretch; width: 100%;}
+  .hero-art img {height: 215px; object-position: 50% 55%;}
+  .hero-art figcaption {font-size: 9px;}
+  .ingredient-grid, .recommendation-grid {grid-template-columns: 1fr; gap: 10px;}
+  .ingredient-card {padding: 13px; gap: 14px;}
+  .ingredient-icon {width: 36px; height: 36px;}
+  .ingredients h2 {font-size: 16px; line-height: 1.4;}
+  .section-intro {font-size: 12px;}
+  .st-key-sugar_panel, .st-key-force_panel, .st-key-taste_panel {padding: 5px 2px 14px;}
+  .chart-note {padding: 0 10px;}
+  .page-heading h1 {font-size: 28px;}
+  .recommendations h2 {font-size: 17px;}
+  .recommendation h3 {min-height: unset; margin-bottom: 10px;}
+  .result-label {min-height: unset; margin-bottom: 12px;}
+  .recommendation-result {font-size: 29px;}
+  .takeaway {flex-direction: column; gap: 6px; padding: 12px 14px;}
+  .st-key-navigation label {padding: 6px 10px;}
+}
+@media (max-width: 520px) {
+  .hero-kpis {flex-direction: column; gap: 14px;}
+  .hero-kpi {flex-direction: row; align-items: center; gap: 16px;}
+  .hero-kpi-value {min-width: 112px;}
+  .hero-kpi + .hero-kpi {padding-left: 0; border-left: 0;}
+}
