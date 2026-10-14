@@ -58,7 +58,7 @@ class CookiesAppTests(unittest.TestCase):
             self.assertNotIn("error_x", fig["data"][0])
         self.assertEqual(len(at.get("popover")), 1)
         captions = " ".join(element.value for element in [*at.caption, *at.markdown])
-        for text in ["три независимые партии", "Допустимые изменения качества не заданы",
+        for text in ["трёх независимых партиях", "Допустимые изменения качества не заданы",
                      "Все сахара готового печенья не измеряли", "Rodriguez-Garcia et al., 2022",
                      "https://doi.org/10.17864/1947.000384",
                      "https://doi.org/10.1016/j.lwt.2022.113837",
@@ -71,7 +71,7 @@ class CookiesAppTests(unittest.TestCase):
         html = html_bodies(at)
         self.assertIn("<h1>Печенье</h1>", html)
         self.assertIn("Как снижение сахарозы повлияло на вкус и структуру", html)
-        self.assertIn("Производители ищут способы уменьшить добавленный сахар", html)
+        self.assertIn("Производителю нужно сократить добавленный сахар", html)
         self.assertNotIn("ПРОЕКТ № 3", html)
         self.assertEqual(len(at.metric), 0)
         self.assertEqual(re.findall(r'data-kpi="[^"]+">([^<]+)', html), ["35,11%", "4"])
@@ -101,12 +101,12 @@ class CookiesAppTests(unittest.TestCase):
         summary = re.search(r'<div class="takeaway">.*?<p>(.*?)</p>', html).group(1)
         for value in ["22,11–35,11%", "27,35%", "27,62 пункта", "34,84%", "-9,15%"]:
             self.assertIn(value, summary)
-        for term in ["согласовать требования к качеству", "в трёх независимых партиях"]:
+        for term in ["задать требования к качеству", "в трёх независимых партиях"]:
             self.assertIn(term, html)
         for term in ["столовый сахар", "тонком кишечнике", "кукурузного крахмала", "Инулин из цикория"]:
             self.assertIn(term, html)
         self.assertEqual(html.count('class="ingredient-card"'), 3)
-        self.assertNotIn("Все сахара готового печенья не измеряли", html)
+        self.assertIn("Все сахара готового печенья не измеряли", html)
         self.assertNotIn("doi.org", html)
 
     def test_candidates_table_taste_and_recommendations(self):
@@ -122,7 +122,7 @@ class CookiesAppTests(unittest.TestCase):
         candidates = self.tables["candidate_comparison"].sort_values("recipe_order")
         self.assertEqual(table["Рецептура"].tolist(), candidates.recipe_name_ru.tolist())
         self.assertEqual(table["Изменение силы, %"].tolist(), candidates.breaking_relative_delta_pct.tolist())
-        self.assertIn("Большая масса ингредиентов усложняет сравнение", table.iloc[2, 3])
+        self.assertIn("Общая масса ингредиентов больше", table.iloc[2, 3])
         for metric, value in [("length_mm", "7,87%"), ("penetration_resistance_ns", "32,24%")]:
             physical = self.tables["physical_recipe_summary"]
             delta = physical.query("recipe_id == 'fibruline' and metric_id == @metric").relative_delta_pct.iloc[0]
@@ -143,14 +143,14 @@ class CookiesAppTests(unittest.TestCase):
         self.assertEqual(taste["layout"]["height"], 490)
         self.assertEqual(taste["layout"]["bargroupgap"], 0.24)
         self.assertEqual(taste["layout"]["font"]["size"], 14)
-        self.assertIn("а не предпочтения покупателей", html)
+        self.assertIn("а не то, насколько печенье понравилось покупателям", html)
         self.assertEqual(re.findall(r'data-recipe-id="([^"]+)', html), ["promitor", "fibruline", "nutriose"])
         for value in ["35,11%", "−9,15%", "+5,67 / +5,94"]:
             self.assertIn(value.replace("−", "-"), html)
         self.assertEqual(html.count('class="recommendation-story"'), 3)
         for term in ["27,35%", "27,62 пункта", "34,84%", "24,04%", "32,24%", "7,87%",
-                     "В новых партиях проверьте силу разрушения", "Проверьте размеры и сопротивление проникновению",
-                     "Повторите испытания силы разрушения", "Ни один вариант пока не подтверждён как полноценная замена стандарта"]:
+                     "При следующей выпечке проверьте силу разрушения", "В новой серии выпечек сравните размеры",
+                     "При следующем испытании проверьте высоту", "Ни один вариант пока не подтверждён как полноценная замена стандарта"]:
             self.assertIn(term, html)
         self.assertNotIn("doi.org", html)
         self.assertEqual(len(at.get("download_button")), 1)

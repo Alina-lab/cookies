@@ -14,7 +14,7 @@ from playwright.sync_api import sync_playwright, expect
 
 def check_page(page, plots, points):
     expect(page.locator('[data-testid="stPlotlyChart"]')).to_have_count(plots)
-    titles = ["Сколько сахарозы заменили?", "Как изменилось усилие излома?"] if plots == 2 else ["Что изменилось во вкусе?"]
+    titles = ["Сколько сахарозы заменили?", "Какое усилие нужно,<br>чтобы сломать печенье?"] if plots == 2 else ["Что изменилось во вкусе?"]
     page.wait_for_function(
         "expected => { const p = [...document.querySelectorAll('.js-plotly-plot')]; return p.map(e=>e.data?.[0]?.x?.length).join()===expected.points.join() && p.map(e=>e._fullLayout?.title?.text).join()===expected.titles.join(); }",
         arg={"points": points, "titles": titles},
