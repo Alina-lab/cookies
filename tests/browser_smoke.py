@@ -1,4 +1,4 @@
-"""Необязательная проверка реальной локальной страницы Chromium через Playwright.
+"""Реальная проверка двух локальных страниц Chromium через Playwright.
 
 Сначала: python -m streamlit run app.py
 Тест не публикует приложение и не обращается к DataLens.
@@ -12,6 +12,19 @@ import pandas as pd
 from playwright.sync_api import sync_playwright, expect
 
 
+def check_page(page, plots, points):
+    expect(page.locator('[data-testid="stPlotlyChart"]')).to_have_count(plots)
+    page.wait_for_function(
+        "sizes => [...document.querySelectorAll('.js-plotly-plot')].map(e => e.data?.[0]?.x?.length).join() === sizes.join()",
+        arg=points,
+    )
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+    assert page.locator('[data-testid="stException"]').count() == 0
+    assert page.locator('[data-testid="stMultiSelect"], [data-testid="stSelectbox"], [data-testid="stExpander"]').count() == 0
+    expect(page.get_by_text("Ограничения: всего три независимые партии", exact=False)).to_be_visible()
+    assert page.locator('[data-testid="stMainBlockContainer"]').evaluate("e => e.scrollHeight <= innerHeight * 2")
+
+
 def run(executable=None, screenshots=None):
     with sync_playwright() as driver, tempfile.TemporaryDirectory(prefix="cookies-browser-") as folder:
         options = {"headless": True}
@@ -22,92 +35,67 @@ def run(executable=None, screenshots=None):
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto("http://127.0.0.1:8501", wait_until="networkidle")
-        page.get_by_role("heading", name="Снижение сахарозы и качество печенья").wait_for()
-        page.locator(".js-plotly-plot .main-svg").first.wait_for()
-        page.wait_for_function("document.querySelector('.js-plotly-plot')?.data?.[0]?.x?.length === 5")
-        expect(page.get_by_role("link", name="GitHub: код и данные", exact=True)).to_have_attribute("href", "https://github.com/Alina-lab/cookies")
-        expect(page.get_by_role("link", name="Jupyter Notebook", exact=True)).to_have_attribute("href", "https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb")
-        page.get_by_text("Резюме исследования.", exact=True).wait_for()
-        assert page.locator('[data-testid="stSidebar"] [data-testid="stMultiSelectTagsContainer"]').evaluate("e => e.clientHeight < 220")
-        expect(page.locator('[data-testid="stMetricValue"]')).to_have_text(["29,45 г", "35,11%", "4", "3"])
-        assert "Стандартная" in page.locator(".js-plotly-plot .ytick").all_text_contents()
-        tags = page.locator('[data-tag] span[title]').evaluate_all("es => es.map(e => [e.clientWidth,e.scrollWidth,e.clientHeight,e.scrollHeight])")
-        assert all(width == scroll_width and height == scroll_height for width, scroll_width, height, scroll_height in tags)
-        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-        assert page.locator('[data-testid="stSidebar"] [data-tag]').last.evaluate(
-            "e => e.getBoundingClientRect().bottom <= e.closest('[data-testid=stMultiSelectTagsContainer]').getBoundingClientRect().bottom + 1")
+        page.get_by_role("heading", name="Что показало исследование?", exact=True).wait_for()
+        check_page(page, 2, [4, 5])
+        expect(page.locator('[data-testid="stMetricValue"]')).to_have_text(["35,11%", "4"])
+        expect(page.locator('[data-testid="stDataFrame"]')).to_have_count(0)
+        assert "Стандартная" not in page.locator(".js-plotly-plot").first.locator(".ytick").all_text_contents()
+        assert "Стандартная" in page.locator(".js-plotly-plot").nth(1).locator(".ytick").all_text_contents()
+        assert page.locator(".js-plotly-plot").evaluate_all("es => es.map(e => e._fullLayout.xaxis.title.text)") == [
+            "Снижение добавленной сахарозы, %", "Средняя сила разрушения, Н"]
+        # Настоящие подписи и подсказки обеих диаграмм.
+        for index, value in [(0, "31,48"), (1, "61,91")]:
+            graph = page.locator(".js-plotly-plot").nth(index)
+            graph.locator(".barlayer .point").first.hover(force=True)
+            expect(graph.locator(".hoverlayer")).to_contain_text(value)
         if screenshots:
-            output = Path(screenshots); output.mkdir(parents=True, exist_ok=True)
-            page.set_viewport_size({"width": 1366, "height": 1250})
-            page.screenshot(path=str(output / "sugar.png"))
-            page.set_viewport_size({"width": 1366, "height": 900})
-        # Реальное наведение на столбец: подпись и числовое значение доступны.
-        page.locator(".js-plotly-plot .barlayer .point").first.hover(force=True)
-        expect(page.locator(".hoverlayer").first).to_contain_text("29,45")
-        # Фильтр рецептур, контроль и скачивание настоящего файла браузером.
-        for label in ["Декстрин № 2", "Более растворимый инулин", "Длинноцепочечный инулин"]:
-            page.get_by_role("button", name="Remove " + label, exact=True).click()
-        page.wait_for_function("document.querySelector('.js-plotly-plot')?.data?.[0]?.x?.length === 2")
-        page.get_by_role("tab", name="Снижение, %", exact=True).click()
-        expect(page.get_by_role("tab", name="Снижение, %", exact=True)).to_have_attribute("aria-selected", "true")
+            output = Path(screenshots)
+            output.mkdir(parents=True, exist_ok=True)
+            page.mouse.move(0, 0)
+            page.screenshot(path=str(output / "results.png"), full_page=True)
+
+        page.get_by_text("Следующие испытания", exact=True).click()
+        page.get_by_role("heading", name="Какие рецептуры стоит испытывать?", exact=True).wait_for()
+        check_page(page, 1, [4])
+        expect(page.locator('[data-testid="stDataFrame"]')).to_have_count(1)
+        expect(page.locator('[data-testid="stMetricValue"]')).to_have_count(0)
+        assert page.locator(".js-plotly-plot").evaluate("e => e.data.map(t => t.name)") == ["Горечь", "Подгорелый вкус"]
+        assert page.locator(".js-plotly-plot").evaluate("e => e._fullLayout.xaxis.title.text") == "Разность со стандартом, пункты шкалы 0–100"
+        assert page.locator(".js-plotly-plot").evaluate("e => e.data[0].x[0]") == 5.66875
+        # Наведение на две сенсорные серии, без выдуманных индивидуальных оценок.
+        for index, value in [(0, "+5,67"), (1, "+5,94")]:
+            page.locator(".barlayer .trace").nth(index).locator(".point").first.hover(force=True)
+            expect(page.locator(".hoverlayer")).to_contain_text(value)
+        page.mouse.move(0, 0)
         with page.expect_download() as download_info:
             page.get_by_role("button", name="Скачать сравнение · CSV", exact=True).click()
         downloaded = Path(folder) / "comparison.csv"
         download_info.value.save_as(downloaded)
         csv = pd.read_csv(downloaded)
-        assert csv["Рецептура"].tolist() == ["Стандартная", "Кукурузный декстрин № 1"]
-        assert abs(csv.iloc[0]["Сахароза, г на 100 г муки"] - 29.45) < 1e-12
-        # Физические фильтры и отрисовка точек.
-        page.get_by_text("2. Изменение качества", exact=True).click()
-        page.get_by_role("heading", name="Как изменилась измеренная структура печенья").wait_for()
-        page.wait_for_function("document.querySelector('.js-plotly-plot')?.data?.[0]?.x?.length === 6")
-        group = page.get_by_role("combobox", name="Группа показателей", exact=True)
-        group.click()
-        group.press("ArrowDown")
-        page.get_by_role("option", name="Влажность и активность воды", exact=True).click()
-        metric = page.get_by_role("combobox", name="Физический показатель", exact=True)
-        metric.click()
-        metric.press("ArrowDown")
-        page.get_by_role("option", name="Активность воды · безразм.", exact=True).click()
-        page.get_by_text("Разность со стандартом", exact=True).click()
-        page.wait_for_function("document.querySelectorAll('.js-plotly-plot')[1]?._fullLayout?.xaxis?.title?.text === 'безразм.'")
-        # Один сенсорный признак, переключение на опубликованные средние.
-        sensory = page.locator('[data-testid="stMultiSelect"]').nth(1)
-        sensory.get_by_role("button", name="Clear all", exact=True).click()
-        page.get_by_text("Выберите хотя бы один сенсорный признак для графика и таблицы.", exact=True).wait_for()
-        page.get_by_role("combobox", name="Сенсорные признаки", exact=True).fill("Сладость вкуса")
-        page.get_by_role("option", name="Третий укус: вкус · Сладость вкуса", exact=True).click()
-        page.wait_for_function("document.querySelectorAll('.js-plotly-plot')[2]?.data?.[0]?.x?.length === 1")
-        page.get_by_text("Опубликованные средние", exact=True).click()
-        page.locator('[data-testid="stPlotlyChart"]').nth(2).scroll_into_view_if_needed()
-        page.wait_for_function("document.querySelectorAll('.js-plotly-plot')[2]?._fullLayout?.xaxis?.range?.[1] === 100")
-        assert page.locator('[data-testid="stException"]').count() == 0
-        if screenshots:
-            page.mouse.move(900, 650); page.mouse.wheel(0, -4000)
-            page.locator('[data-testid="stMain"]').evaluate("e => e.scrollTop = 450")
-            page.screenshot(path=str(output / "quality.png"))
-        page.get_by_text("3. Перспективные рецептуры", exact=True).click()
-        page.get_by_role("heading", name="Три направления следующих испытаний").wait_for()
-        page.get_by_role("heading", name="Сравнение выбранных кандидатов").wait_for()
+        assert csv.shape == (4, 4)
+        assert csv["Рецептура"].tolist() == ["Кукурузный декстрин № 1", "Кукурузный декстрин № 2",
+                                           "Более растворимый инулин", "Длинноцепочечный инулин"]
+        assert abs(csv.iloc[1]["Снижение сахарозы, %"] - 35.11035653650255) < 1e-12
+        assert abs(csv.iloc[3]["Изменение силы, %"] - (-9.15343728945053)) < 1e-12
         if screenshots:
             page.locator('[data-testid="stMain"]').evaluate("e => e.scrollTop = 0")
-            page.screenshot(path=str(output / "candidates.png"))
-        page.locator('[data-testid="stMultiSelect"]').first.get_by_role("button", name="Clear all", exact=True).click()
-        page.get_by_text("Сейчас выбран только стандарт.", exact=False).wait_for()
+            page.screenshot(path=str(output / "candidates.png"), full_page=True)
+        # Возврат без старых виджетов и проверка более узкого ноутбука.
         page.set_viewport_size({"width": 1024, "height": 768})
-        page.get_by_text("1. Снижение сахарозы", exact=True).click()
-        page.get_by_role("heading", name="Меньше сахарозы — другое соотношение ингредиентов").wait_for()
-        page.wait_for_function("document.querySelector('.js-plotly-plot')?.data?.[0]?.x?.length === 1")
-        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-        assert page.locator('[data-testid="stException"]').count() == 0
+        check_page(page, 1, [4])
+        page.get_by_text("Результаты", exact=True).click()
+        page.get_by_role("heading", name="Что показало исследование?", exact=True).wait_for()
+        check_page(page, 2, [4, 5])
+        if screenshots:
+            page.screenshot(path=str(output / "results-1024.png"), full_page=True)
         assert not errors, errors
-        print("Chromium: три раздела, фильтры, CSV, графики и ширины 1366/1024 проверены; ошибок JavaScript нет.")
+        print("Chromium: две страницы, три графика, таблица, наведение, CSV и ширины 1366/1024 проверены; ошибок JavaScript нет.")
         browser.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--browser-executable", help="Необязательно: путь к установленному Chromium")
-    parser.add_argument("--screenshots", help="Необязательно: локальная папка настоящих скриншотов")
+    parser.add_argument("--screenshots", help="Необязательно: папка настоящих скриншотов")
     args = parser.parse_args()
     run(args.browser_executable, args.screenshots)
