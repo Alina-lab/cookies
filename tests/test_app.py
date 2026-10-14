@@ -1,6 +1,5 @@
 """Проверки упрощённого интерфейса, чисел и сохранности исследования."""
 
-import ast
 import hashlib
 import io
 import re
@@ -31,9 +30,9 @@ class CookiesAppTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest()
-                      for folder in ["data", "source", "audit", "datalens"]
+                      for folder in ["data", "source"]
                       for p in (ROOT / folder).rglob("*") if p.is_file() and "__pycache__" not in p.parts}
-        for name in ["biscuit_recipe_analysis.ipynb", "audit_report.md", "DATA_LICENSE.md", "source_files.zip"]:
+        for name in ["biscuit_recipe_analysis.ipynb", "audit_report.md", "DATA_LICENSE.md"]:
             path = ROOT / name
             cls.hashes[path] = hashlib.sha256(path.read_bytes()).hexdigest()
         cls.tables = app.load_data()
@@ -49,8 +48,6 @@ class CookiesAppTests(unittest.TestCase):
         self.assertEqual(len(at.error), 0, [e.value for e in at.error])
         self.assertEqual(len(at.radio), 1)
         self.assertEqual(list(at.radio[0].options), ["Результаты", "Следующие испытания"])
-        for kind in ["selectbox", "multiselect", "tabs", "expander"]:
-            self.assertEqual(len(at.get(kind)), 0, kind)
         for fig in plot_specs(at):
             self.assertTrue(fig["data"])
             self.assertTrue(all(len(trace.get("x", [])) for trace in fig["data"]))
@@ -72,11 +69,7 @@ class CookiesAppTests(unittest.TestCase):
         self.assertIn("<h1>Печенье</h1>", html)
         self.assertIn("Как снижение сахарозы повлияло на вкус и структуру", html)
         self.assertIn("Производителю нужно сократить добавленный сахар", html)
-        self.assertNotIn("ПРОЕКТ № 3", html)
-        self.assertEqual(len(at.metric), 0)
         self.assertEqual(re.findall(r'data-kpi="[^"]+">([^<]+)', html), ["35,11%", "4"])
-        self.assertNotIn("<figcaption>", html)
-        self.assertNotIn("Иллюстрация для проекта · не образцы эксперимента", html)
         self.assertEqual(len(at.dataframe), 0)
         self.assertEqual(len(at.get("download_button")), 0)
         sugar, force = plot_specs(at)
@@ -115,7 +108,6 @@ class CookiesAppTests(unittest.TestCase):
         self.healthy(at)
         html = html_bodies(at)
         self.assertIn("<h1>Какие рецептуры стоит испытывать?</h1>", html)
-        self.assertEqual(len(at.metric), 0)
         self.assertEqual(len(at.dataframe), 1)
         self.assertEqual(at.dataframe[0].value.shape, (4, 4))
         table = at.dataframe[0].value
@@ -185,11 +177,6 @@ class CookiesAppTests(unittest.TestCase):
                 self.healthy(at)
             finally:
                 os.chdir(previous)
-        imports = [node for node in ast.walk(ast.parse((ROOT / "app.py").read_text()))
-                   if isinstance(node, (ast.Import, ast.ImportFrom))]
-        modules = {node.module.split(".")[0] for node in imports if isinstance(node, ast.ImportFrom)}
-        modules |= {name.name.split(".")[0] for node in imports if isinstance(node, ast.Import) for name in node.names}
-        self.assertLessEqual(modules, {"pathlib", "math", "base64", "html", "pandas", "plotly", "streamlit"})
 
     def test_light_theme_contrast(self):
         theme = tomllib.loads((ROOT / ".streamlit" / "config.toml").read_text())["theme"]

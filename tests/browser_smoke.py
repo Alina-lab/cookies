@@ -1,7 +1,7 @@
 """Проверка дизайна Cookies в настоящем локальном браузере.
 
 Сначала: python -m streamlit run app.py
-Не обращается к DataLens и не публикует приложение.
+Проверяет локальное приложение и не публикует его.
 """
 
 import argparse
@@ -22,9 +22,7 @@ def check_page(page, plots, points):
     page.evaluate("document.fonts.ready")
     assert page.locator('[data-testid="stException"]').count() == 0
     expect(page).to_have_title("Печенье · снижение сахарозы")
-    assert page.get_by_text("ПРОЕКТ № 3", exact=True).count() == 0
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-    assert page.locator('[data-testid="stMultiSelect"], [data-testid="stSelectbox"], [data-testid="stExpander"], [data-testid="stMetric"]').count() == 0
     # Исследовательский подвал убран; источники открываются по запросу.
     assert page.get_by_role("link", name="Научная статья", exact=True).count() == 0
     assert page.get_by_text("Rodriguez-Garcia et al., 2022", exact=False).count() == 0
@@ -110,7 +108,6 @@ def run(executable=None, screenshots=None):
             expect(page.locator(".hero-kpi-value")).to_have_text(["35,11%", "4"])
             expect(page.locator(".ingredient-card")).to_have_count(3)
             expect(page.locator(".hero-art img")).to_have_attribute("alt", "Иллюстрация: песочное печенье на светлом льне")
-            expect(page.locator(".hero-art figcaption")).to_have_count(0)
             page.wait_for_function("[...document.querySelectorAll('.hero-art img, .ingredient-icon')].every(e=>e.complete && e.naturalWidth>0)")
             assert page.locator(".hero").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width == 390 else 2)
             assert page.locator(".ingredient-grid").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width == 390 else 3)

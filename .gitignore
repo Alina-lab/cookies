@@ -2,20 +2,27 @@
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
-.venv/
-.venv-app/
+.venv*/
 venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+*.log
+*.tmp
+*.bak
+test-results/
+playwright-report/
+executed_notebook.ipynb
 
 # Local configuration and credentials
 .env
 .env.*
 !.env.example
-
-# DataLens: generated request plans and private deployment state
-datalens/build/
-datalens/.state.json
-datalens/.state.*
+secrets.toml
+*.pem
+*.key
 
 # Editor and system files
 .DS_Store
