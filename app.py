@@ -211,6 +211,15 @@ def sugar_section(tables, selected):
     st.header("Меньше сахарозы — другое соотношение ингредиентов")
     st.write("Производство хочет сократить добавленную сахарозу и понять последствия для продукта. "
              "Сравниваем четыре исследованных варианта; универсальный предел снижения по ним установить нельзя.")
+    candidates = tables["candidate_comparison"]
+    sugar_low, sugar_high = candidates.sucrose_reduction_pct.min(), candidates.sucrose_reduction_pct.max()
+    force_low, force_high = candidates.absolute_breaking_relative_delta_pct.min(), candidates.absolute_breaking_relative_delta_pct.max()
+    st.markdown(
+        f"**Резюме исследования.** В четырёх вариантах добавленную сахарозу снизили на **{number(sugar_low)}–{number(sugar_high)}%**. "
+        f"Средняя сила разрушения ниже стандарта на **{number(force_low)}–{number(force_high)}%**; "
+        "изменились размеры и сенсорный профиль, включая горечь и подгорелый вкус. "
+        "Это разные компромиссы для следующих испытаний. **Эквивалентность стандарту не доказана.**"
+    )
     recipes = selected_rows(tables["recipes"], selected)
     sugar_tab, reduction_tab, ingredient_tab = st.tabs(["Сахароза", "Снижение, %", "Заменяющий ингредиент"])
     with sugar_tab:
@@ -408,14 +417,20 @@ def main():
         st.title("Cookies")
         st.caption("Исследование рецептур · Университет Рединга")
         selected = st.multiselect("Экспериментальные рецептуры", recipes.recipe_id.iloc[1:].tolist(),
-                                  default=recipes.recipe_id.iloc[1:].tolist(), format_func=names.get, placeholder="Выберите варианты", key="recipes")
-        st.caption("Стандартная рецептура всегда остаётся основой сравнения. Без выбранных вариантов показан только стандарт.")
+                                  default=recipes.recipe_id.iloc[1:].tolist(),
+                                  format_func=lambda rid: names[rid].replace("Кукурузный декстрин", "Декстрин"),
+                                  placeholder="Выберите варианты", key="recipes",
+                                  help="Декстрин № 1 — кукурузный декстрин Nutriose; № 2 — Promitor. Полные названия рецептур сохранены на графиках и в таблицах.")
+        st.caption("Стандарт всегда в сравнении. Пустой выбор — только стандарт.")
         st.divider()
         st.download_button("Скачать сравнение · CSV", csv_bytes(comparison_table(tables, selected)),
                            file_name="cookies_comparison.csv", mime="text/csv", key="download_comparison", width="stretch")
         st.caption("Выбранные рецептуры + стандарт; числа и единицы, UTF-8 с BOM.")
         st.divider()
         st.markdown("[Исходный набор](https://doi.org/10.17864/1947.000384) · [Научная статья](https://doi.org/10.1016/j.lwt.2022.113837)")
+        # Публичность Alina-lab/cookies проверена через GitHub 14.10.2026.
+        st.markdown("[GitHub: код и данные](https://github.com/Alina-lab/cookies) · "
+                    "[Jupyter Notebook](https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb)")
         st.caption("Nguyen et al., 2022 · CC BY 4.0. Анализ и аудит сохранены в репозитории.")
     st.caption("АНАЛИТИКА РЕЦЕПТУР / COOKIES")
     st.title("Снижение сахарозы и качество печенья")

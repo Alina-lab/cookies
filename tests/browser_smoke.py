@@ -25,6 +25,10 @@ def run(executable=None, screenshots=None):
         page.get_by_role("heading", name="Снижение сахарозы и качество печенья").wait_for()
         page.locator(".js-plotly-plot .main-svg").first.wait_for()
         page.wait_for_function("document.querySelector('.js-plotly-plot')?.data?.[0]?.x?.length === 5")
+        expect(page.get_by_role("link", name="GitHub: код и данные", exact=True)).to_have_attribute("href", "https://github.com/Alina-lab/cookies")
+        expect(page.get_by_role("link", name="Jupyter Notebook", exact=True)).to_have_attribute("href", "https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb")
+        page.get_by_text("Резюме исследования.", exact=True).wait_for()
+        assert page.locator('[data-testid="stSidebar"] [data-testid="stMultiSelectTagsContainer"]').evaluate("e => e.clientHeight < 220")
         expect(page.locator('[data-testid="stMetricValue"]')).to_have_text(["29,45 г", "35,11%", "4", "3"])
         assert "Стандартная" in page.locator(".js-plotly-plot .ytick").all_text_contents()
         tags = page.locator('[data-tag] span[title]').evaluate_all("es => es.map(e => [e.clientWidth,e.scrollWidth,e.clientHeight,e.scrollHeight])")
@@ -41,7 +45,7 @@ def run(executable=None, screenshots=None):
         page.locator(".js-plotly-plot .barlayer .point").first.hover(force=True)
         expect(page.locator(".hoverlayer").first).to_contain_text("29,45")
         # Фильтр рецептур, контроль и скачивание настоящего файла браузером.
-        for label in ["Кукурузный декстрин № 2", "Более растворимый инулин", "Длинноцепочечный инулин"]:
+        for label in ["Декстрин № 2", "Более растворимый инулин", "Длинноцепочечный инулин"]:
             page.get_by_role("button", name="Remove " + label, exact=True).click()
         page.wait_for_function("document.querySelector('.js-plotly-plot')?.data?.[0]?.x?.length === 2")
         page.get_by_role("tab", name="Снижение, %", exact=True).click()

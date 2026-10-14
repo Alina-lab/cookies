@@ -78,6 +78,13 @@ class CookiesAppTests(unittest.TestCase):
         at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
         self.healthy(at)
         self.assertEqual([m.value for m in at.metric], ["29,45 г", "35,11%", "4", "3"])
+        summary = next(element.value for element in at.markdown if "Резюме исследования." in element.value)
+        self.assertIn("22,11–35,11%", summary)
+        self.assertIn("9,15–32,82%", summary)
+        self.assertIn("Эквивалентность стандарту не доказана", summary)
+        links = " ".join(element.value for element in at.markdown)
+        self.assertIn("https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb", links)
+
         choices = [[], ["nutriose"], ["promitor"], ["orafti"], ["fibruline"], ["nutriose", "fibruline"]]
         for selected in choices:
             at.multiselect(key="recipes").set_value(selected).run()
@@ -89,6 +96,7 @@ class CookiesAppTests(unittest.TestCase):
             self.assertEqual(figs[2]["data"][0]["x"], expected.fibre_ingredient_g_per_100g_flour.tolist())
             self.assertIn("Стандартная", figs[0]["data"][0]["y"])
             self.assertEqual(at.metric[1].value, "35,11%")
+            self.assertEqual(next(element.value for element in at.markdown if "Резюме исследования." in element.value), summary)
             exported = app.csv_bytes(app.comparison_table(self.tables, selected))
             self.assertTrue(exported.startswith(b"\xef\xbb\xbf"))
             csv = pd.read_csv(io.BytesIO(exported))
