@@ -52,8 +52,8 @@ class CookiesAppTests(unittest.TestCase):
             self.assertTrue(fig["layout"]["xaxis"]["title"]["text"])
             self.assertNotIn("error_x", fig["data"][0])
         captions = " ".join(element.value for element in at.caption)
-        for text in ["три независимые партии", "границы изменений качества не заданы",
-                     "содержание всех сахаров готового печенья не измерялось",
+        for text in ["три независимые партии", "Допустимые изменения качества не заданы",
+                     "Все сахара готового печенья не измеряли", "Rodriguez-Garcia et al., 2022",
                      "https://doi.org/10.17864/1947.000384",
                      "https://doi.org/10.1016/j.lwt.2022.113837",
                      "https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb"]:
@@ -67,7 +67,7 @@ class CookiesAppTests(unittest.TestCase):
         self.assertEqual(len(at.dataframe), 0)
         self.assertEqual(len(at.get("download_button")), 0)
         sugar, force = plot_specs(at)
-        self.assertEqual(sugar["layout"]["xaxis"]["title"]["text"], "Снижение добавленной сахарозы, %")
+        self.assertEqual(sugar["layout"]["xaxis"]["title"]["text"], "Снижение сахарозы, %")
         self.assertEqual(force["layout"]["xaxis"]["title"]["text"], "Средняя сила разрушения, Н")
         self.assertEqual(len(sugar["data"][0]["x"]), 4)
         self.assertEqual(len(force["data"][0]["x"]), 5)
@@ -80,8 +80,11 @@ class CookiesAppTests(unittest.TestCase):
         self.assertEqual(force["data"][0]["marker"]["color"], list(app.PALETTE.values()))
         self.assertEqual(sugar["data"][0]["marker"]["color"], list(app.PALETTE.values())[1:])
         text = " ".join(m.value for m in at.markdown)
-        self.assertIn("Сахарозу удалось снизить на 22–35%", text)
-        self.assertIn("необходимы дополнительные испытания", text)
+        self.assertIn("дополнительных партиях", text)
+        intro = next(m.value for m in at.markdown if "Зачем заменять сахар пищевыми волокнами?" in m.value)
+        self.assertLessEqual(len(intro.split()), 100)
+        for term in ["столовый сахар", "Пищевые волокна", "тонком кишечнике", "кукурузными декстринами", "из цикория"]:
+            self.assertIn(term, intro)
 
     def test_candidates_table_taste_and_recommendations(self):
         at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
@@ -95,7 +98,7 @@ class CookiesAppTests(unittest.TestCase):
         candidates = self.tables["candidate_comparison"].sort_values("recipe_order")
         self.assertEqual(table["Рецептура"].tolist(), candidates.recipe_name_ru.tolist())
         self.assertEqual(table["Изменение силы, %"].tolist(), candidates.breaking_relative_delta_pct.tolist())
-        self.assertIn("Другая общая масса", table.iloc[2, 3])
+        self.assertIn("Масса рецепта выше", table.iloc[2, 3])
         figures = plot_specs(at)
         self.assertEqual(len(figures), 1)
         taste = figures[0]
@@ -108,12 +111,13 @@ class CookiesAppTests(unittest.TestCase):
         self.assertAlmostEqual(taste["data"][1]["x"][0], 5.9375)
         self.assertIn("пункты шкалы 0–100", taste["layout"]["xaxis"]["title"]["text"])
         captions = " ".join(m.value for m in at.caption)
-        self.assertIn("не привлекательность или предпочтения покупателей", captions)
+        self.assertIn("выраженность вкуса, а не предпочтения покупателей", captions)
         text = " ".join(m.value for m in at.markdown)
-        for line in ["Максимальное сокращение сахарозы — **Кукурузный декстрин № 2**",
-                     "Близость средней силы разрушения к стандарту — **Длинноцепочечный инулин**",
-                     "Меньшие изменения горечи и подгорелого вкуса — **Кукурузный декстрин № 1**",
-                     "Эквивалентность стандарту не доказана"]:
+        for line in ["Если главное — сократить сахарозу: **Кукурузный декстрин № 2**",
+                     "Если важна близкая к стандарту сила разрушения: **Длинноцепочечный инулин**",
+                     "Если важны небольшие изменения горечи и подгорелого вкуса: **Кукурузный декстрин № 1**",
+                     "усилие излома и подгорелый вкус", "Размеры и сопротивление проколу",
+                     "усилие излома и высоту", "пока не подтверждает, что они сохраняют все свойства"]:
             self.assertIn(line, text)
         self.assertEqual(len(at.get("download_button")), 1)
 

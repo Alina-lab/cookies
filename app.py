@@ -13,11 +13,18 @@ PALETTE = {"control": "#64748B", "nutriose": "#0072B2", "promitor": "#C65D16",
 PAGES = ["Результаты", "Следующие испытания"]
 SENSORY = {"sensory_flavour_bitter": "Горечь", "sensory_flavour_burnt": "Подгорелый вкус"}
 FEATURES = {
-    "nutriose": "Меньше сдвигов горечи и подгорелого вкуса.",
-    "promitor": "Выше интенсивность подгорелого вкуса.",
-    "orafti": "Другая общая масса; сначала уточнить состав.",
-    "fibruline": "Другие размеры и сопротивление проникновению.",
+    "nutriose": "Меньше изменений горечи и подгорелого вкуса.",
+    "promitor": "Подгорелый вкус сильнее, чем у стандарта.",
+    "orafti": "Масса рецепта выше; сначала уточнить состав.",
+    "fibruline": "Выше сопротивление проколу; размеры меньше.",
 }
+FIBRE_INTRO = (
+    "Сахароза — обычный столовый сахар. В печенье он влияет на сладость, цвет, структуру и поведение теста при выпечке. "
+    "Пищевые волокна — компоненты растений или переработанных растительных углеводов. "
+    "Они не перевариваются в тонком кишечнике так, как обычный сахар. "
+    "В эксперименте часть сахарозы заменили кукурузными декстринами и ингредиентами с инулином из цикория. "
+    "Такие ингредиенты могут заменить часть сахара по массе, но не обязательно сохраняют прежний вкус и структуру."
+)
 FILES = {"recipes": (5, ["recipe_id"]),
          "physical_recipe_summary": (75, ["recipe_id", "metric_id"]),
          "sensory_means": (200, ["recipe_id", "metric_id"]),
@@ -130,9 +137,10 @@ def sensory_chart(tables):
             customdata=[[label, number(value, signed=True)] for value in rows.delta_vs_control_points],
             hovertemplate="%{y}<br>%{customdata[0]}: <b>%{customdata[1]} пункта</b><extra></extra>",
         ))
-    chart_style(fig, "Как изменился вкус?", "Разность со стандартом, пункты шкалы 0–100", rows.recipe_name_ru.tolist(), height=360)
+    chart_style(fig, "Что изменилось во вкусе?", "Разница со стандартом,<br>пункты шкалы 0–100", rows.recipe_name_ru.tolist(), height=360)
     fig.update_layout(barmode="group", bargap=0.3,
-                      margin={"t": 92}, legend={"y": 1.04, "yanchor": "bottom", "x": 0, "xanchor": "left"})
+                      margin={"t": 112}, title={"y": 0.98, "yanchor": "top"},
+                      legend={"y": 1.04, "yanchor": "bottom", "x": 0, "xanchor": "left"})
     maximum = max(max(trace.x) for trace in fig.data)
     fig.update_xaxes(range=[0, maximum * 1.15])
     fig.add_vline(x=0, line_color="#64748B", line_width=1)
@@ -150,7 +158,7 @@ def comparison_table(tables):
     rows["feature"] = rows.recipe_id.map(FEATURES)
     return rows[["recipe_name_ru", "sucrose_reduction_pct", "breaking_relative_delta_pct", "feature"]].rename(columns={
         "recipe_name_ru": "Рецептура", "sucrose_reduction_pct": "Снижение сахарозы, %",
-        "breaking_relative_delta_pct": "Изменение силы, %", "feature": "Особенность / ограничение",
+        "breaking_relative_delta_pct": "Изменение силы, %", "feature": "На что обратить внимание",
     })
 
 
@@ -160,20 +168,24 @@ def csv_bytes(frame):
 
 def results_page(tables):
     st.title("Что показало исследование?")
+    st.write("Производство хочет уменьшить добавленный сахар и понять, какие рецептуры стоит испытывать дальше.")
+    st.markdown("**Зачем заменять сахар пищевыми волокнами?**\n\n" + FIBRE_INTRO)
     left, right = st.columns(2)
     candidates = tables["candidate_comparison"]
-    left.metric("Максимальное исследованное снижение сахарозы", number(candidates.sucrose_reduction_pct.max()) + "%")
-    right.metric("Экспериментальные рецептуры", len(candidates))
+    left.metric("Самое большое снижение сахарозы", number(candidates.sucrose_reduction_pct.max()) + "%")
+    right.metric("Варианты с заменой сахара", len(candidates))
     left, right = st.columns(2, gap="large")
     with left:
         recipes = tables["recipes"].query("recipe_id != 'control'").sort_values("recipe_order")
-        show_plot(bar_chart(recipes, "sucrose_reduction_pct", "Сколько сахарозы удалось убрать?", "Снижение добавленной сахарозы, %"), "sugar")
-        st.caption("Относительно стандарта: 29,45 г сахарозы на 100 г муки. Это соотношение в рецепте, а не состав готового печенья.")
+        show_plot(bar_chart(recipes, "sucrose_reduction_pct", "Сколько сахарозы заменили?", "Снижение сахарозы, %"), "sugar")
+        st.caption("Больше всего сахарозы заменили с декстрином № 2. Проценты считаем от стандартного рецепта: "
+                   "29,45 г сахарозы на 100 г муки. Граммы относятся к рецепту, а не к 100 г готового печенья.")
     with right:
-        show_plot(bar_chart(force_rows(tables), "mean_of_batch_means", "Как изменилась прочность печенья?", "Средняя сила разрушения, Н"), "force")
-        st.caption("Сила разрушения — усилие, при котором печенье ломается; меньшее значение само по себе не означает худшее качество.")
-    st.write("Сахарозу удалось снизить на 22–35% в исследованных рецептурах, но физические и вкусовые характеристики печенья изменились. "
-             "Для выбора подходящего варианта необходимы дополнительные испытания.")
+        show_plot(bar_chart(force_rows(tables), "mean_of_batch_means", "Как изменилось усилие излома?", "Средняя сила разрушения, Н"), "force")
+        st.caption("Сила разрушения — усилие, при котором печенье ломается. Во всех вариантах среднее ниже стандарта; "
+                   "ближе всего — длинноцепочечный инулин. Меньшее усилие не означает худший продукт.")
+    st.write("В изученных рецептурах сахарозы меньше, а усилие излома и вкус отличаются от стандарта. "
+             "Следующий шаг — проверить подходящие варианты на дополнительных партиях.")
 
 
 def candidates_page(tables):
@@ -183,19 +195,23 @@ def candidates_page(tables):
                  column_config={"Рецептура": st.column_config.TextColumn(width="medium"),
                                 "Снижение сахарозы, %": st.column_config.NumberColumn(format="%.2f"),
                                 "Изменение силы, %": st.column_config.NumberColumn(format="%+.2f"),
-                                "Особенность / ограничение": st.column_config.TextColumn(width="large")})
+                                "На что обратить внимание": st.column_config.TextColumn(width="large")})
     show_plot(sensory_chart(tables), "taste")
-    st.caption("Разности опубликованных средних: интенсивность горечи и подгорелого вкуса, а не привлекательность или предпочтения покупателей.")
+    st.caption("По опубликованным средним горечь и подгорелый вкус сильнее, чем у стандарта. "
+               "У декстрина № 1 они изменились меньше всего. Здесь оценивали выраженность вкуса, а не предпочтения покупателей.")
     candidates = tables["candidate_comparison"].set_index("recipe_id")
     names = candidates.recipe_name_ru
     sugar = candidates.sucrose_reduction_pct.idxmax()
     force = candidates.absolute_breaking_relative_delta_pct.idxmin()
     taste = candidates.index[(candidates.bitterness_delta_points.abs() == candidates.bitterness_delta_points.abs().min())
                              & (candidates.burnt_taste_delta_points.abs() == candidates.burnt_taste_delta_points.abs().min())]
-    st.markdown(f"- Максимальное сокращение сахарозы — **{names[sugar]}**.\n"
-                f"- Близость средней силы разрушения к стандарту — **{names[force]}**.\n"
-                f"- Меньшие изменения горечи и подгорелого вкуса — **{names[taste[0]]}**.")
-    st.write("Это направления следующих испытаний, а не готовые к внедрению рецептуры. Эквивалентность стандарту не доказана.")
+    st.markdown(f"- Если главное — сократить сахарозу: **{names[sugar]}**. Здесь снижение максимальное. "
+                "Дальше проверить усилие излома и подгорелый вкус.\n"
+                f"- Если важна близкая к стандарту сила разрушения: **{names[force]}**. Среднее ближе остальных. "
+                "Размеры и сопротивление проколу требуют отдельной проверки.\n"
+                f"- Если важны небольшие изменения горечи и подгорелого вкуса: **{names[taste[0]]}**. "
+                "Эти признаки изменились меньше. При повторении проверить усилие излома и высоту печенья.")
+    st.write("Эти варианты стоит испытать дальше. Исследование пока не подтверждает, что они сохраняют все свойства стандартного печенья.")
     st.download_button("Скачать сравнение · CSV", csv_bytes(comparison), file_name="cookies_comparison.csv", mime="text/csv")
 
 
@@ -211,7 +227,7 @@ def main():
     try:
         tables = load_data()
     except (OSError, ValueError, KeyError) as exc:
-        st.error(f"Не удалось загрузить подготовленные данные: {exc}")
+        st.error(f"Не удалось открыть данные исследования: {exc}")
         st.stop()
     st.caption("COOKIES · СНИЖЕНИЕ САХАРОЗЫ В ПЕСОЧНОМ ПЕЧЕНЬЕ")
     page = st.radio("Страница", PAGES, horizontal=True, label_visibility="collapsed", key="page")
@@ -219,13 +235,13 @@ def main():
         results_page(tables)
     else:
         candidates_page(tables)
-    st.caption("Ограничения: всего три независимые партии на рецептуру; допустимые границы изменений качества не заданы; "
-               "содержание всех сахаров готового печенья не измерялось.")
+    st.caption("Что важно учесть: на каждую рецептуру — три независимые партии. Допустимые изменения качества не заданы. "
+               "Все сахара готового печенья не измеряли.")
     st.caption("[Научная статья](https://doi.org/10.1016/j.lwt.2022.113837) · "
                "[Исходные данные](https://doi.org/10.17864/1947.000384) · "
                "[GitHub](https://github.com/Alina-lab/cookies) · "
-               "[Методология: Jupyter Notebook](https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb)  \n"
-               "Nguyen et al., 2022 · Данные CC BY 4.0.")
+               "[Подробный анализ: Jupyter Notebook](https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb)  \n"
+               "Rodriguez-Garcia et al., 2022 · Данные CC BY 4.0.")
 
 
 if __name__ == "__main__":
