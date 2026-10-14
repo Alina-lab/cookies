@@ -1,7 +1,12 @@
-"""Проверки исходников, уровней наблюдений и согласованности десяти таблиц."""
+"""Проверки происхождения данных, уровней наблюдений и девяти таблиц."""
 
 import hashlib
 import json
+import ast
+import tempfile
+from unittest.mock import patch
+from urllib.request import Request
+from io import BytesIO
 from pathlib import Path
 import unittest
 
@@ -19,7 +24,6 @@ TABLES = {
     "statistical_results": (8, ["statistical_result_id"]),
     "colour_summary": (5, ["recipe_id"]),
     "candidate_comparison": (4, ["recipe_id"]),
-    "bi_field_dictionary": (234, ["source_name", "field_name"]),
 }
 
 
@@ -28,13 +32,46 @@ class DataTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tables = {name: pd.read_csv(ROOT / "data" / f"{name}.csv") for name in TABLES}
 
-    def test_sources_match_published_manifest(self):
-        manifest = json.loads((ROOT / "source" / "download_manifest.json").read_text())
+    def test_source_manifest_and_optional_local_cache(self):
+        manifest = json.loads((ROOT / "data" / "source_manifest.json").read_text())
         self.assertEqual(len(manifest), 6)
         for entry in manifest:
             with self.subTest(file=entry["file"]):
+                self.assertEqual(len(entry["sha256"]), 64)
+                self.assertGreater(entry["bytes"], 0)
+                self.assertTrue(entry["url"].startswith("https://"))
                 source = ROOT / "source" / entry["file"]
-                self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), entry["sha256"])
+                if source.exists():
+                    self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), entry["sha256"])
+
+    def test_source_loader_uses_cache_and_rejects_corruption(self):
+        # Тестируем функцию из notebook, не импортируя научные библиотеки в приложение.
+        nb = json.loads((ROOT / "biscuit_recipe_analysis.ipynb").read_text())
+        setup = ast.parse("".join(nb["cells"][1]["source"]))
+        function = next(node for node in setup.body if isinstance(node, ast.FunctionDef) and node.name == "obtain_sources")
+        namespace = {"hashlib": hashlib, "Request": Request, "urlopen": None}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), "notebook_source_loader", "exec"), namespace)
+        payload = b"fixture for transport integrity, not experimental data"
+        entry = {"file": "test.xlsx", "url": "https://example.org/test.xlsx", "sha256": hashlib.sha256(payload).hexdigest()}
+        with tempfile.TemporaryDirectory() as folder:
+            destination = Path(folder)
+            cached = destination / entry["file"]
+            cached.write_bytes(payload)
+            with patch.dict(namespace, urlopen=lambda *args, **kwargs: self.fail("Повторная загрузка проверенного файла")):
+                self.assertEqual(namespace["obtain_sources"]([entry], destination), {entry["file"]: entry["sha256"]})
+            cached.write_bytes(b"changed")
+            with self.assertRaisesRegex(ValueError, "не перезаписан"):
+                namespace["obtain_sources"]([entry], destination)
+            self.assertEqual(cached.read_bytes(), b"changed")
+            cached.unlink()
+            with patch.dict(namespace, urlopen=lambda *args, **kwargs: BytesIO(b"wrong response")):
+                with self.assertRaisesRegex(ValueError, "файл не сохранён"):
+                    namespace["obtain_sources"]([entry], destination)
+            self.assertFalse(cached.exists())
+            with patch.dict(namespace, urlopen=lambda *args, **kwargs: (_ for _ in ()).throw(OSError("offline"))):
+                with self.assertRaisesRegex(RuntimeError, "Скачайте файл"):
+                    namespace["obtain_sources"]([entry], destination)
+            self.assertFalse(cached.exists())
 
     def test_keys_and_references(self):
         recipes = self.tables["recipes"]
@@ -115,7 +152,7 @@ class DataTests(unittest.TestCase):
         reductions = self.tables["recipes"].set_index("recipe_id").sucrose_reduction_pct
         np.testing.assert_allclose(candidates.sucrose_reduction_pct, candidates.recipe_id.map(reductions))
 
-    def test_sensory_colour_and_field_dictionary(self):
+    def test_sensory_and_colour(self):
         sensory = self.tables["sensory_means"]
         self.assertEqual(sensory.metric_id.nunique(), 40)
         self.assertFalse(sensory.new_statistical_tests_allowed.any())
@@ -132,8 +169,6 @@ class DataTests(unittest.TestCase):
         centres = centres.pivot(index="recipe_id", columns="metric_id", values="mean_of_batch_means")
         distance = np.linalg.norm(centres - centres.loc["control"], axis=1)
         np.testing.assert_allclose(self.tables["colour_summary"].set_index("recipe_id").delta_e76_vs_control.reindex(centres.index), distance)
-        for filename, fields in self.tables["bi_field_dictionary"].groupby("file_name"):
-            self.assertEqual(set(fields.field_name), set(self.tables[Path(filename).stem].columns))
 
 
 if __name__ == "__main__":

@@ -16,6 +16,9 @@ test-results/
 playwright-report/
 executed_notebook.ipynb
 
+# Published scientific sources are downloaded locally by the notebook
+/source/
+
 # Local configuration and credentials
 .env
 .env.*

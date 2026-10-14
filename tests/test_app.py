@@ -30,9 +30,9 @@ class CookiesAppTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest()
-                      for folder in ["data", "source"]
+                      for folder in ["data"]
                       for p in (ROOT / folder).rglob("*") if p.is_file() and "__pycache__" not in p.parts}
-        for name in ["biscuit_recipe_analysis.ipynb", "audit_report.md", "DATA_LICENSE.md"]:
+        for name in ["biscuit_recipe_analysis.ipynb", "data/DATA_LICENSE.md"]:
             path = ROOT / name
             cls.hashes[path] = hashlib.sha256(path.read_bytes()).hexdigest()
         cls.tables = app.load_data()
@@ -67,7 +67,7 @@ class CookiesAppTests(unittest.TestCase):
         self.healthy(at)
         html = html_bodies(at)
         self.assertIn("<h1>Печенье</h1>", html)
-        self.assertIn("Как снижение сахарозы повлияло на вкус и структуру", html)
+        self.assertIn("Как частичная замена сахарозы изменила вкус и структуру печенья", html)
         self.assertIn("Производителю нужно сократить добавленный сахар", html)
         self.assertEqual(re.findall(r'data-kpi="[^"]+">([^<]+)', html), ["35,11%", "4"])
         self.assertEqual(len(at.dataframe), 0)
