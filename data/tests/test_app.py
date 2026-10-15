@@ -5,6 +5,7 @@ import io
 import re
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import tomllib
@@ -13,9 +14,10 @@ import unittest
 import pandas as pd
 from streamlit.testing.v1 import AppTest
 
-import app
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
-ROOT = Path(app.__file__).resolve().parent
+import app
 
 
 def html_bodies(at):

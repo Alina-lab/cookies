@@ -183,11 +183,11 @@ def csv_bytes(frame):
 
 
 def asset_uri(name, mime):
-    return f"data:{mime};base64," + b64encode((ROOT / "assets" / name).read_bytes()).decode("ascii")
+    return f"data:{mime};base64," + b64encode((ROOT / "data" / "assets" / name).read_bytes()).decode("ascii")
 
 
 def apply_design():
-    css = (ROOT / "assets" / "styles.css").read_text()
+    css = (ROOT / "data" / "assets" / "styles.css").read_text()
     css = css.replace("__MANROPE__", asset_uri("manrope.ttf", "font/ttf"))
     css = css.replace("__LORA__", asset_uri("lora.ttf", "font/ttf"))
     st.html("<style>" + css + "</style>")
