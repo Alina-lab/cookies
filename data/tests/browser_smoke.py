@@ -15,7 +15,7 @@ from playwright.sync_api import sync_playwright, expect
 
 def check_page(page, plots, points):
     expect(page.locator('[data-testid="stPlotlyChart"]')).to_have_count(plots)
-    titles = ["Сколько сахарозы заменили?", "Какое усилие нужно,<br>чтобы сломать печенье?"] if plots == 2 else ["Что изменилось во вкусе?"]
+    titles = ["Снижение количества сахарозы<br>в экспериментальных рецептурах", "Сила разрушения печенья"] if plots == 2 else ["Изменение горечи<br>и подгорелого вкуса"]
     page.wait_for_function(
         "expected => { const p = [...document.querySelectorAll('.js-plotly-plot')]; return p.map(e=>e.data?.[0]?.x?.length).join()===expected.points.join() && p.map(e=>e._fullLayout?.title?.text).join()===expected.titles.join(); }",
         arg={"points": points, "titles": titles},
@@ -24,9 +24,22 @@ def check_page(page, plots, points):
     assert page.locator('[data-testid="stException"]').count() == 0
     expect(page).to_have_title("Печенье · снижение сахарозы")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-    # Исследовательский подвал убран; источники открываются по запросу.
+    expect(page.get_by_role("button", name="Об исследовании", exact=True)).to_have_count(0)
+    expect(page.locator('.takeaway')).to_have_count(0)
+    # Источники и ограничения сохранены в README и notebook.
     assert page.get_by_role("link", name="Научная статья", exact=True).count() == 0
     assert page.get_by_text("Rodriguez-Garcia et al., 2022", exact=False).count() == 0
+    decor = page.locator('[data-testid="stAppViewContainer"]').evaluate("""e => {
+        const s=getComputedStyle(e, '::before');
+        return {display:s.display, position:s.position, left:parseFloat(s.left), width:parseFloat(s.width), pointer:s.pointerEvents, background:s.backgroundImage};
+    }""")
+    if page.viewport_size['width'] == 390:
+        assert decor['display'] == 'none', decor
+    else:
+        assert decor['display'] != 'none' and decor['position'] == 'fixed', decor
+        assert decor['pointer'] == 'none' and 'radial-gradient' in decor['background'], decor
+        content = page.locator('.hero' if plots == 2 else '.page-heading').bounding_box()
+        assert decor['left'] + decor['width'] < content['x'], decor
 
 
 def check_chart_labels(page):
@@ -63,22 +76,6 @@ def check_chart_labels(page):
             }""")
             assert gaps['within'] >= 5, gaps
             assert gaps['between'] >= 20, gaps
-
-
-def check_about(page):
-    page.get_by_role("button", name="Об исследовании", exact=True).click()
-    expect(page.get_by_role("heading", name="Об исследовании и источниках", exact=True)).to_be_visible()
-    for name, href in [
-        ("Научная статья", "https://doi.org/10.1016/j.lwt.2022.113837"),
-        ("Исходные данные", "https://doi.org/10.17864/1947.000384"),
-        ("GitHub", "https://github.com/Alina-lab/cookies"),
-        ("Jupyter Notebook", "https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb"),
-    ]:
-        expect(page.get_by_role("link", name=name, exact=True)).to_have_attribute("href", href)
-    expect(page.locator('[data-testid="stPopoverBody"]').get_by_text("Общее содержание сахаров в готовом печенье не измерялось.", exact=False)).to_be_visible()
-    expect(page.get_by_text("Rodriguez-Garcia et al., 2022", exact=False)).to_be_visible()
-    page.keyboard.press("Escape")
-    expect(page.get_by_role("heading", name="Об исследовании и источниках", exact=True)).to_have_count(0)
 
 
 def screenshot(page, directory, name):
@@ -120,11 +117,8 @@ def run(executable=None, screenshots=None):
                 graph.locator(selector).first.hover(force=True)
                 expect(graph.locator(".hoverlayer")).to_contain_text(value)
             screenshot(page, output, f"results-{width}.png")
-            if width == 1440:
-                check_about(page)
-
             page.get_by_text("Следующие испытания", exact=True).click()
-            page.get_by_role("heading", name="Какие рецептуры стоит испытывать?", exact=True).wait_for()
+            page.get_by_role("heading", name="Сравнение экспериментальных рецептур", exact=True).wait_for()
             check_page(page, 1, [4])
             expect(page.locator('[data-testid="stDataFrame"]')).to_have_count(1)
             page.locator('[data-testid="stDataFrame"] canvas').first.wait_for()
@@ -132,6 +126,8 @@ def run(executable=None, screenshots=None):
             assert page.locator(".recommendation").evaluate_all("es=>es.map(e=>e.dataset.recipeId)") == ["promitor", "fibruline", "nutriose"]
             expect(page.locator(".recommendation-result")).to_have_text(["35,11%", "-9,15%", "+5,67 / +5,94"])
             expect(page.locator(".recommendation-story")).to_have_count(3)
+            expect(page.locator('.recommendation[data-recipe-id="promitor"] .next-test strong')).to_have_count(0)
+            expect(page.locator('.recommendation .next-test strong')).to_have_count(2)
             if width != 390:
                 heights=page.locator('.recommendation').evaluate_all('es=>es.map(e=>e.getBoundingClientRect().height)')
                 assert max(heights)-min(heights) < 2, heights
@@ -149,7 +145,6 @@ def run(executable=None, screenshots=None):
                 scroll.evaluate("e=>e.scrollLeft=e.scrollWidth-e.clientWidth")
                 assert scroll.evaluate("e=>e.scrollLeft>0")
                 scroll.evaluate("e=>e.scrollLeft=0")
-                check_about(page)
             with page.expect_download() as info:
                 page.get_by_role("button", name="Скачать сравнение · CSV", exact=True).click()
             downloaded=Path(folder)/f"comparison-{width}.csv"
@@ -159,16 +154,17 @@ def run(executable=None, screenshots=None):
             assert csv["Рецептура"].tolist() == ["Кукурузный декстрин № 1", "Кукурузный декстрин № 2",
                                                "Более растворимый инулин", "Длинноцепочечный инулин"]
             assert abs(csv.iloc[1]["Снижение сахарозы, %"]-35.11035653650255)<1e-12
-            assert abs(csv.iloc[3]["Изменение силы, %"]-(-9.15343728945053))<1e-12
+            assert csv.columns.tolist() == ["Рецептура", "Снижение сахарозы, %", "Изменение силы разрушения, %", "Особенности"]
+            assert abs(csv.iloc[3]["Изменение силы разрушения, %"]-(-9.15343728945053))<1e-12
             # Два кадра дают браузеру завершить отрисовку canvas таблицы.
             page.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))")
             screenshot(page, output, f"candidates-{width}.png")
             if output:
-                page.locator('.takeaway').scroll_into_view_if_needed()
+                page.locator('.recommendations').scroll_into_view_if_needed()
                 page.screenshot(path=str(output/f"recommendations-{width}.png"))
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
         assert not errors, errors
-        print("Chromium: обе страницы, иллюстрация и иконки, карточки, три графика, таблица, источники и CSV проверены на 1440/1024/390 px; ошибок JavaScript нет.")
+        print("Chromium: обе страницы, левый декор, иллюстрация и иконки, карточки, три графика, таблица и CSV проверены на 1440/1024/390 px; ошибок JavaScript нет.")
         browser.close()
 
 

@@ -15,10 +15,10 @@ PALETTE = {"control": "#7B7A74", "nutriose": "#A96934", "promitor": "#A24F3A",
 PAGES = ["Результаты", "Следующие испытания"]
 SENSORY = {"sensory_flavour_bitter": "Горечь", "sensory_flavour_burnt": "Подгорелый вкус"}
 FEATURES = {
-    "nutriose": "Оценки горечи и подгорелого вкуса ближе всего к стандарту.",
-    "promitor": "Оценка подгорелого вкуса выше на 27,62 пункта.",
-    "orafti": "Общая масса ингредиентов больше, чем в остальных рецептурах.",
-    "fibruline": "Печенье стало короче и труднее поддавалось проколу.",
+    "nutriose": "По сравнению со стандартом оценки горечи и подгорелого вкуса изменились меньше всего.",
+    "promitor": "Оценка подгорелого вкуса выше, чем у стандарта, на 27,62 пункта.",
+    "orafti": "Общая масса ингредиентов составляет 180,16 г на 100 г муки против 175,95 г в остальных рецептурах.",
+    "fibruline": "Средняя длина печенья уменьшилась на 7,87%, а сопротивление проколу увеличилось на 32,24%.",
 }
 FILES = {"recipes": (5, ["recipe_id"]),
          "physical_recipe_summary": (75, ["recipe_id", "metric_id"]),
@@ -132,7 +132,7 @@ def force_chart(tables):
         customdata=[[number(value)] for value in values],
         hovertemplate="%{y}<br><b>%{customdata[0]} Н</b><extra></extra>",
     ))
-    chart_style(fig, "Какое усилие нужно,<br>чтобы сломать печенье?", "Средняя сила<br>разрушения, Н", rows.recipe_name_ru.tolist())
+    chart_style(fig, "Сила разрушения печенья", "Средняя сила<br>разрушения, Н", rows.recipe_name_ru.tolist())
     fig.update_xaxes(range=[0, values.max() * 1.22])
     fig.add_vline(x=values.iloc[0], line_color=PALETTE["control"], line_dash="dot", line_width=1)
     return fig
@@ -152,7 +152,7 @@ def sensory_chart(tables):
             customdata=[[label, number(value, signed=True)] for value in rows.delta_vs_control_points],
             hovertemplate="%{y}<br>%{customdata[0]}: <b>%{customdata[1]} пункта</b><extra></extra>",
         ))
-    chart_style(fig, "Что изменилось во вкусе?", "Разница со стандартом,<br>пункты шкалы 0–100", rows.recipe_name_ru.tolist(), height=490)
+    chart_style(fig, "Изменение горечи<br>и подгорелого вкуса", "Разница со стандартом,<br>пункты шкалы 0–100", rows.recipe_name_ru.tolist(), height=490)
     fig.update_layout(barmode="group", bargap=0.36, bargroupgap=0.24,
                       margin={"t": 112}, title={"y": 0.98, "yanchor": "top"},
                       legend={"y": 1.04, "yanchor": "bottom", "x": 0, "xanchor": "left"})
@@ -173,7 +173,7 @@ def comparison_table(tables):
     rows["feature"] = rows.recipe_id.map(FEATURES)
     return rows[["recipe_name_ru", "sucrose_reduction_pct", "breaking_relative_delta_pct", "feature"]].rename(columns={
         "recipe_name_ru": "Рецептура", "sucrose_reduction_pct": "Снижение сахарозы, %",
-        "breaking_relative_delta_pct": "Изменение силы, %", "feature": "На что обратить внимание",
+        "breaking_relative_delta_pct": "Изменение силы разрушения, %", "feature": "Особенности",
     })
 
 
@@ -193,26 +193,6 @@ def apply_design():
     st.html("<style>" + css + "</style>")
 
 
-def about_research():
-    with st.popover("Об исследовании", key="about", type="tertiary"):
-        st.markdown("### Об исследовании и источниках")
-        st.markdown("В Университете Рединга сравнили стандартное печенье "
-                    "и четыре рецептуры, в которых часть сахарозы заменили пищевыми волокнами.")
-        st.markdown("Каждую рецептуру изготовили в трёх независимых партиях. "
-                    "По трём партиям трудно судить, как рецептура поведёт себя в массовом производстве.")
-        st.markdown("**Ограничения.** Допустимые изменения качества не заданы. "
-                    "Общее содержание сахаров в готовом печенье не измерялось. "
-                    "Индивидуальные оценки дегустаторов не опубликованы. "
-                    "Доступны средние оценки интенсивности ощущений, а не предпочтений покупателей.")
-        st.markdown("[Научная статья](https://doi.org/10.1016/j.lwt.2022.113837) · "
-                    "[Исходные данные](https://doi.org/10.17864/1947.000384)  \n"
-                    "[GitHub](https://github.com/Alina-lab/cookies) · "
-                    "[Jupyter Notebook](https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb)")
-        st.caption("Rodriguez-Garcia et al., 2022 · Данные CC BY 4.0.")
-        st.caption("Изображение печенья создано для оформления проекта. Это не фотография образцов эксперимента. "
-                   "Шрифты Manrope и Lora — SIL Open Font License 1.1.")
-
-
 def hero(tables):
     candidates = tables["candidate_comparison"]
     image = asset_uri("cookies-hero.webp", "image/webp")
@@ -221,12 +201,11 @@ def hero(tables):
       <div class="hero-copy">
         <p class="eyebrow">Исследование рецептур / Университет Рединга</p>
         <h1>Печенье</h1>
-        <p class="hero-question">Как замена части сахарозы пищевыми волокнами повлияла на печенье</p>
-        <p class="hero-intro">Производитель хочет уменьшить количество добавленного сахара и сохранить привычные вкус и структуру печенья.
-        Но сахар не только придаёт сладость: от него зависят цвет и свойства теста при выпечке.</p>
-        <p class="hero-intro">В эксперименте Университета Рединга сравнили стандартную рецептуру и четыре варианта
-        с пищевыми волокнами вместо части сахарозы. По опубликованным данным разбираемся,
-        какие из них стоит испытывать дальше.</p>
+        <p class="hero-question">Влияние частичной замены сахарозы на свойства печенья</p>
+        <p class="hero-intro">Уменьшение количества сахара в печенье может изменить не только его сладость, но и цвет, структуру и текстуру.
+        Поэтому при разработке рецептур с пониженным содержанием сахарозы важно оценивать, как её замена влияет на свойства готового продукта.</p>
+        <p class="hero-intro">Исследователи Университета Рединга изготовили печенье по пяти рецептурам: одной стандартной и четырём с частичной заменой сахарозы ингредиентами с пищевыми волокнами.
+        В проекте я сравниваю результаты этих экспериментов, чтобы выяснить, какие изменения произошли и какие рецептуры заслуживают дальнейшего изучения.</p>
         <div class="hero-kpis">
           <div class="hero-kpi"><span class="hero-kpi-value" data-kpi="reduction">{number(candidates.sucrose_reduction_pct.max())}%</span>
             <span class="hero-kpi-label">максимальное исследованное<br>снижение сахарозы</span></div>
@@ -248,9 +227,9 @@ def ingredient_cards():
         '<path d="M24 20c-10-13-17-8-10-1l10 1c12-14 20-8 12-1ZM24 20v6c-10 0-6 8 0 16 6-8 10-16 0-16ZM23 30l7 2M20 34l6 2"/>',
     ]
     copy = [
-        ("Сахароза", "Обычный столовый сахар. Придаёт сладость и влияет на цвет, структуру и свойства теста."),
-        ("Кукурузные декстрины", "Их получают из кукурузного крахмала. В исследовании сравнили два разных коммерческих ингредиента."),
-        ("Инулин из цикория", "В эксперименте использовали два разных ингредиента с этим пищевым волокном."),
+        ("Сахароза", "Обычный столовый сахар. Помимо сладости, влияет на цвет и структуру печенья."),
+        ("Кукурузные декстрины", "В исследовании использовали два ингредиента на основе кукурузного крахмала: Nutriose и Promitor."),
+        ("Инулин из цикория", "Сравнивали два ингредиента с инулином: Orafti и Fibruline. Они различаются по своим свойствам."),
     ]
     cards = []
     for icon, (title, description) in zip(icons, copy):
@@ -258,9 +237,10 @@ def ingredient_cards():
         uri = "data:image/svg+xml;base64," + b64encode(svg.encode()).decode()
         cards.append(f'<article class="ingredient-card"><img class="ingredient-icon" src="{uri}" alt="" aria-hidden="true">'
                      f'<div><h3>{title}</h3><p>{description}</p></div></article>')
-    st.html('<section class="ingredients"><h2>Зачем заменять сахар пищевыми волокнами?</h2>'
-            '<p class="section-intro">Пищевые волокна не расщепляются пищеварительными ферментами в тонком кишечнике. '
-            'Ингредиенты с такими волокнами позволяют заменить часть сахарозы по массе. Вкус и структура при этом могут измениться.</p>'
+    st.html('<section class="ingredients"><h2>Какие ингредиенты использовали вместо сахарозы</h2>'
+            '<p class="section-intro">В эксперименте часть сахарозы заменили ингредиентами, содержащими пищевые волокна: кукурузными декстринами и инулином из цикория. '
+            'Такая замена позволяет уменьшить количество добавленной сахарозы в рецептуре, но не гарантирует, что печенье сохранит прежние свойства. '
+            'Поэтому важно оценивать не только состав, но и результаты выпечки.</p>'
             '<div class="ingredient-grid">' + "".join(cards) + '</div></section>')
 
 
@@ -270,33 +250,15 @@ def results_page(tables):
     left, right = st.columns(2, gap="medium")
     with left, st.container(key="sugar_panel"):
         recipes = tables["recipes"].query("recipe_id != 'control'").sort_values("recipe_order")
-        show_plot(bar_chart(recipes, "sucrose_reduction_pct", "Сколько сахарозы заменили?", "Снижение сахарозы, %"), "sugar")
-        st.html('<p class="chart-note"><strong>Наибольшего снижения сахарозы удалось добиться в рецептуре с декстрином № 2.</strong> '
-                'Процент рассчитан относительно стандарта (29,45 г сахарозы на 100 г муки). '
-                'Общее содержание сахаров в готовом печенье не измерялось.</p>')
+        show_plot(bar_chart(recipes, "sucrose_reduction_pct", "Снижение количества сахарозы<br>в экспериментальных рецептурах", "Снижение сахарозы, %"), "sugar")
+        st.html('<p class="chart-note">В стандартной рецептуре на 100 г муки приходилось 29,45 г сахарозы. '
+                'В экспериментальных вариантах её количество уменьшили на 22,11–35,11%. '
+                'Сильнее всего сахарозу сократили в рецептуре с кукурузным декстрином № 2 — на 35,11%.</p>')
     with right, st.container(key="force_panel"):
         show_plot(force_chart(tables), "force")
-        st.html('<p class="chart-note"><strong>По средней силе разрушения к стандарту ближе всего печенье с длинноцепочечным инулином.</strong> '
-                'Прибор показывает, какое усилие нужно, чтобы сломать печенье. По одному этому измерению нельзя судить обо всех свойствах продукта. '
-                '<span class="note-detail">Каждую рецептуру изготовили в трёх независимых партиях. '
-                'Прежде чем менять рецептуру на производстве, нужно определить допустимые изменения вкуса и структуры и провести дополнительные испытания.</span></p>')
-    candidates = tables["candidate_comparison"].set_index("recipe_id")
-    dextrin = candidates.loc["promitor"]
-    inulin = candidates.loc["fibruline"]
-    summary = (
-        f'В исследованных рецептурах количество добавленной сахарозы сократили на {number(candidates.sucrose_reduction_pct.min())}–'
-        f'{number(candidates.sucrose_reduction_pct.max())}%. Изменились и физические свойства, и отдельные вкусовые признаки. '
-        f'В рецептуре с декстрином № 2 сокращение составило {number(dextrin.sucrose_reduction_pct)}%, '
-        f'но для разрушения печенья в среднем требовалось на {number(-dextrin.breaking_relative_delta_pct)}% меньше усилия, '
-        f'а оценка подгорелого вкуса была выше на {number(dextrin.burnt_taste_delta_points)} пункта по шкале 0–100. '
-        f'С длинноцепочечным инулином сахарозы на {number(inulin.sucrose_reduction_pct)}% меньше, '
-        f'а средняя сила разрушения ближе всего к стандарту ({number(inulin.breaking_relative_delta_pct, signed=True)}%). '
-        'При этом размеры и сопротивление проколу тоже отличаются. '
-        'Выбор зависит от того, что важнее для производства. '
-        'Эти данные помогают наметить испытания, но не доказывают, что какой-либо вариант полностью сохраняет свойства стандартного печенья.'
-    )
-    st.html('<div class="takeaway"><span class="takeaway-label">Что это значит</span>'
-            f'<p>{summary}</p></div>')
+        st.html('<p class="chart-note">В стандартной рецептуре средняя сила разрушения печенья составляла 61,91 Н. '
+                'В экспериментальных вариантах этот показатель оказался ниже — от 41,59 до 56,24 Н. '
+                'Ближе всего к стандарту оказалась рецептура с длинноцепочечным инулином: для разрушения печенья требовалось в среднем на 9,15% меньше усилия.</p>')
 
 
 def recommendation_cards(tables):
@@ -307,10 +269,11 @@ def recommendation_cards(tables):
                              & (candidates.burnt_taste_delta_points.abs() == candidates.burnt_taste_delta_points.abs().min())][0]
     choices = [
         (sugar, "Сильнее сократить сахарозу", number(candidates.loc[sugar, "sucrose_reduction_pct"]) + "%",
-         "снижение добавленной сахарозы",
-         f'Это наибольшее сокращение среди изученных вариантов. Однако для разрушения печенья в среднем требовалось на {number(-candidates.loc[sugar, "breaking_relative_delta_pct"])}% меньше усилия, '
-         f'а оценка подгорелого вкуса была выше на {number(candidates.loc[sugar, "burnt_taste_delta_points"])} пункта, чем у стандарта.',
-         "В повторных выпечках нужно измерить силу разрушения и оценить подгорелый вкус, чтобы сравнить результаты с заранее согласованными требованиями."),
+         "снижение сахарозы",
+         f'В этой рецептуре удалось добиться наибольшего сокращения сахарозы — на {number(candidates.loc[sugar, "sucrose_reduction_pct"])}% относительно стандарта. '
+         f'Однако средняя сила разрушения печенья уменьшилась на {number(-candidates.loc[sugar, "breaking_relative_delta_pct"])}%, '
+         f'а интенсивность подгорелого вкуса выросла на {number(candidates.loc[sugar, "burnt_taste_delta_points"])} пункта.',
+         "При повторных испытаниях необходимо выяснить, насколько эти изменения допустимы для производства."),
         (force, "Близкая к стандарту сила разрушения", number(candidates.loc[force, "breaking_relative_delta_pct"], signed=True) + "%",
          "изменение средней силы разрушения",
          f'При сокращении сахарозы на {number(candidates.loc[force, "sucrose_reduction_pct"])}% средняя сила разрушения оказалась ближе всего к стандарту. '
@@ -328,35 +291,32 @@ def recommendation_cards(tables):
         f'<p class="priority">{priority}</p><h3>{escape(candidates.loc[rid, "recipe_name_ru"])}</h3>'
         f'<div class="recommendation-result">{value}</div><p class="result-label">{label}</p>'
         f'<p class="recommendation-story">{story}</p>'
-        f'<p class="next-test"><strong>Что проверить</strong>{next_test}</p></article>'
+        f'<p class="next-test">{next_test if rid == sugar else "<strong>Что проверить</strong>" + next_test}</p></article>'
         for rid, priority, value, label, story, next_test in choices)
-    st.html('<section class="recommendations"><h2>Три направления следующих испытаний</h2>'
+    st.html('<section class="recommendations"><h2>Рекомендации по рецептурам</h2>'
             '<div class="recommendation-grid">' + cards + '</div></section>')
 
 
 def candidates_page(tables):
-    st.html('<div class="page-heading"><p class="eyebrow">От результатов — к следующему испытанию</p>'
-            '<h1>Какие рецептуры стоит испытывать?</h1>'
-            '<p>Каждый вариант по-разному меняет свойства печенья. Поэтому следующие испытания стоит планировать с учётом задач производства.</p></div>')
+    st.html('<div class="page-heading"><h1>Сравнение экспериментальных рецептур</h1>'
+            '<p>Замена сахарозы по-разному повлияла на свойства печенья. Чтобы определить, какие рецептуры стоит изучать дальше, '
+            'сравним изменения силы разрушения, горечи и подгорелого вкуса.</p></div>')
     comparison = comparison_table(tables)
     with st.container(key="comparison_panel"):
         st.dataframe(comparison, hide_index=True, width="stretch", row_height=46,
                      column_config={"Рецептура": st.column_config.TextColumn(width=210),
                                     "Снижение сахарозы, %": st.column_config.NumberColumn(format="%.2f", width=174),
-                                    "Изменение силы, %": st.column_config.NumberColumn(format="%+.2f", width=152),
-                                    "На что обратить внимание": st.column_config.TextColumn(width="large")})
+                                    "Изменение силы разрушения, %": st.column_config.NumberColumn(format="%+.2f", width=270),
+                                    "Особенности": st.column_config.TextColumn(width="large")})
     with st.container(key="taste_panel"):
         show_plot(sensory_chart(tables), "taste")
-        st.html('<p class="chart-note"><strong>Во всех четырёх вариантах горечь и подгорелый вкус оценили выше, чем у стандартного печенья.</strong> '
-                'Меньше всего отличаются оценки для декстрина № 1. Речь об интенсивности ощущений по опубликованным средним, '
-                'а не о том, насколько печенье понравилось покупателям.</p>')
+        st.html('<p class="chart-note">Во всех экспериментальных рецептурах интенсивность горечи и подгорелого вкуса оказалась выше, чем у стандартного печенья. '
+                'Наибольшие различия наблюдались в рецептуре с более растворимым инулином: горечь увеличилась на 19,29 пункта, а подгорелый вкус — на 35,80 пункта. '
+                'Наименьшие различия отмечены для кукурузного декстрина № 1: 5,67 и 5,94 пункта соответственно.</p>'
+                '<p class="chart-note">Все значения взяты из опубликованных средних оценок по шкале от 0 до 100.</p>')
     recommendation_cards(tables)
     st.download_button("Скачать сравнение · CSV", csv_bytes(comparison), file_name="cookies_comparison.csv", mime="text/csv",
                        type="tertiary", key="download")
-    st.html('<div class="takeaway"><span class="takeaway-label">Следующий шаг</span>'
-            '<p>Эти варианты стоит рассматривать как кандидатов для новых испытаний. '
-            'Ни один из них пока нельзя считать готовой заменой стандартной рецептуры. '
-            'Прежде чем внедрять выбранную рецептуру, нужно согласовать допустимые изменения вкуса и структуры и проверить их в повторных выпечках.</p></div>')
 
 
 def main():
@@ -367,9 +327,8 @@ def main():
     except (OSError, ValueError, KeyError) as exc:
         st.error(f"Не удалось открыть данные исследования: {exc}")
         st.stop()
-    with st.container(key="topbar", horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
+    with st.container(key="topbar"):
         st.html('<div class="project-label">Аналитика рецептур</div>')
-        about_research()
     with st.container(key="navigation"):
         page = st.radio("Страница", PAGES, horizontal=True, label_visibility="collapsed", key="page")
     if page == PAGES[0]:
