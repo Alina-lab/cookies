@@ -74,7 +74,7 @@ def check_about(page):
         ("Jupyter Notebook", "https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb"),
     ]:
         expect(page.get_by_role("link", name=name, exact=True)).to_have_attribute("href", href)
-    expect(page.locator('[data-testid="stPopoverBody"]').get_by_text("Все сахара готового печенья не измеряли.", exact=False)).to_be_visible()
+    expect(page.locator('[data-testid="stPopoverBody"]').get_by_text("Общее содержание сахаров в готовом печенье не измерялось.", exact=False)).to_be_visible()
     expect(page.get_by_text("Rodriguez-Garcia et al., 2022", exact=False)).to_be_visible()
     page.keyboard.press("Escape")
     expect(page.get_by_role("heading", name="Об исследовании и источниках", exact=True)).to_have_count(0)
