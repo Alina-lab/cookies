@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 420" fill="none" stroke="#A5764B" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+  <defs>
+    <g id="grains">
+      <path d="M0 16C-10 15-14 6-12 0C-4 2 0 8 0 16Z"/>
+      <path d="M0 26C10 25 14 16 12 10C4 12 0 18 0 26Z"/>
+      <path d="M-12 0-17-12M12 10 18-2" stroke-width="1"/>
+    </g>
+    <g id="ear">
+      <path d="M0-25V110M0-8C-6-15-5-25 0-34C6-25 7-16 0-8Z"/>
+      <use href="#grains"/>
+      <use href="#grains" y="20"/>
+      <use href="#grains" y="40"/>
+      <use href="#grains" y="60"/>
+    </g>
+  </defs>
+  <path d="M28 410C29 321 39 247 47 181M10 410C8 348 23 303 41 261"/>
+  <use href="#ear" transform="translate(58 72) rotate(6)"/>
+  <use href="#ear" transform="translate(25 180) rotate(-11) scale(.75)"/>
+  <path d="M37 304C18 285 10 261 12 239C27 257 35 280 37 304Z"/>
+  <path d="M32 347C55 325 70 293 73 267C50 289 36 318 32 347Z"/>
+  <path d="M14 365C7 343 7 322 10 309M39 286C49 268 56 249 58 233" stroke-width="1"/>
+</svg>

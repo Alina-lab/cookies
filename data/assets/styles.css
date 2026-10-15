@@ -13,13 +13,23 @@
 .stMainBlockContainer {max-width: 1280px; padding: 1.7rem 3rem 2.8rem;}
 [data-testid="stHeader"] {background: transparent;}
 [data-testid="stAppViewContainer"] {font-family: Manrope, sans-serif;}
-/* Волнистая кромка напоминает край формочки для печенья. */
-[data-testid="stAppViewContainer"]::before {
-  content: ""; position: fixed; inset: 0 auto 0 0; width: 24px;
+/* Ботанические рисунки показываем только при достаточной ширине полей. */
+[data-testid="stAppViewContainer"]::before,
+[data-testid="stAppViewContainer"]::after {
+  content: ""; display: none; position: fixed;
   pointer-events: none; z-index: 1;
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2248%22%20viewBox%3D%220%200%2024%2048%22%3E%3Cpath%20d%3D%22M0%200H10C26%200%2026%2024%2010%2024C26%2024%2026%2048%2010%2048H0Z%22%20fill%3D%22%23EAD9C4%22%2F%3E%3Cpath%20d%3D%22M10%200C26%200%2026%2024%2010%2024C26%2024%2026%2048%2010%2048%22%20fill%3D%22none%22%20stroke%3D%22%23B88E65%22%20stroke-width%3D%221.5%22%2F%3E%3C%2Fsvg%3E");
-  background-size: 24px 48px;
-  background-repeat: repeat-y;
+  background-size: contain; background-position: center; background-repeat: no-repeat;
+}
+@media (min-width: 1360px) {
+  [data-testid="stAppViewContainer"]::before {
+    display: block; left: 12px; top: 170px;
+    width: min(88px, calc((100vw - 1280px) / 2 + 24px)); height: 390px;
+    background-image: url("__WHEAT__"); opacity: .72;
+  }
+  [data-testid="stAppViewContainer"]::after {
+    display: block; right: 16px; top: 56vh; width: 54px; height: 240px;
+    background-image: url("__CHICORY__"); opacity: .48;
+  }
 }
 .st-key-topbar {margin-bottom: .25rem;}
 .project-label {
@@ -97,7 +107,6 @@
   .recommendation {padding: 14px;}
 }
 @media (max-width: 740px) {
-  [data-testid="stAppViewContainer"]::before {display: none;}
   .stMainBlockContainer {padding: 1rem 1rem 1.8rem;}
   .project-label {font-size: 10px; letter-spacing: .08em;}
   .hero {grid-template-columns: 1fr; gap: 20px; padding-top: 12px;}

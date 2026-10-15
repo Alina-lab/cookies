@@ -190,6 +190,8 @@ def apply_design():
     css = (ROOT / "data" / "assets" / "styles.css").read_text()
     css = css.replace("__MANROPE__", asset_uri("manrope.ttf", "font/ttf"))
     css = css.replace("__LORA__", asset_uri("lora.ttf", "font/ttf"))
+    css = css.replace("__WHEAT__", asset_uri("wheat-ornament.svg", "image/svg+xml"))
+    css = css.replace("__CHICORY__", asset_uri("chicory-ornament.svg", "image/svg+xml"))
     st.html("<style>" + css + "</style>")
 
 

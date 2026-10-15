@@ -29,18 +29,26 @@ def check_page(page, plots, points):
     # Источники и ограничения сохранены в README и notebook.
     assert page.get_by_role("link", name="Научная статья", exact=True).count() == 0
     assert page.get_by_text("Rodriguez-Garcia et al., 2022", exact=False).count() == 0
-    decor = page.locator('[data-testid="stAppViewContainer"]').evaluate("""e => {
-        const s=getComputedStyle(e, '::before');
-        return {display:s.display, position:s.position, left:parseFloat(s.left), width:parseFloat(s.width), pointer:s.pointerEvents, background:s.backgroundImage};
-    }""")
-    if page.viewport_size['width'] == 390:
-        assert decor['display'] == 'none', decor
+    ornaments = page.locator('[data-testid="stAppViewContainer"]').evaluate("""e =>
+        ['::before', '::after'].map(pseudo => {
+            const s=getComputedStyle(e, pseudo);
+            return {display:s.display, position:s.position, left:parseFloat(s.left),
+                    right:parseFloat(s.right), width:parseFloat(s.width), opacity:parseFloat(s.opacity),
+                    pointer:s.pointerEvents, background:s.backgroundImage};
+        })
+    """)
+    width = page.viewport_size['width']
+    if width < 1360:
+        assert all(decor['display'] == 'none' for decor in ornaments), ornaments
     else:
-        assert decor['display'] != 'none' and decor['position'] == 'fixed', decor
-        assert decor['pointer'] == 'none' and 'data:image/svg+xml' in decor['background'], decor
-        assert decor['left'] >= 0 and decor['width'] >= 20, decor
+        for decor in ornaments:
+            assert decor['display'] == 'block' and decor['position'] == 'fixed', decor
+            assert decor['pointer'] == 'none' and 'data:image/svg+xml' in decor['background'], decor
+        left, right = ornaments
         content = page.locator('.hero' if plots == 2 else '.page-heading').bounding_box()
-        assert decor['left'] + decor['width'] < content['x'], decor
+        assert left['left'] >= 0 and left['left'] + left['width'] < content['x'], left
+        assert right['right'] >= 0 and right['right'] + right['width'] < width - content['x'] - content['width'], right
+        assert left['width'] > right['width'] and left['opacity'] > right['opacity'], ornaments
 
 
 def check_chart_labels(page):
@@ -165,7 +173,7 @@ def run(executable=None, screenshots=None):
                 page.screenshot(path=str(output/f"recommendations-{width}.png"))
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
         assert not errors, errors
-        print("Chromium: обе страницы, левый декор, иллюстрация и иконки, карточки, три графика, таблица и CSV проверены на 1440/1024/390 px; ошибок JavaScript нет.")
+        print("Chromium: обе страницы, боковой декор и его скрытие на узких экранах, иллюстрация и иконки, карточки, три графика, таблица и CSV проверены на 1440/1024/390 px; ошибок JavaScript нет.")
         browser.close()
 
 
