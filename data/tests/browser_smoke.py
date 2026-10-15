@@ -37,7 +37,8 @@ def check_page(page, plots, points):
         assert decor['display'] == 'none', decor
     else:
         assert decor['display'] != 'none' and decor['position'] == 'fixed', decor
-        assert decor['pointer'] == 'none' and 'radial-gradient' in decor['background'], decor
+        assert decor['pointer'] == 'none' and 'data:image/svg+xml' in decor['background'], decor
+        assert decor['left'] >= 0 and decor['width'] >= 20, decor
         content = page.locator('.hero' if plots == 2 else '.page-heading').bounding_box()
         assert decor['left'] + decor['width'] < content['x'], decor
 

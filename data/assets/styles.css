@@ -13,18 +13,13 @@
 .stMainBlockContainer {max-width: 1280px; padding: 1.7rem 3rem 2.8rem;}
 [data-testid="stHeader"] {background: transparent;}
 [data-testid="stAppViewContainer"] {font-family: Manrope, sans-serif;}
-/* Тонкая линия и редкие крошки остаются в свободном левом поле. */
+/* Волнистая кромка напоминает край формочки для печенья. */
 [data-testid="stAppViewContainer"]::before {
-  content: ""; position: fixed; inset: 88px auto 24px 12px; width: 14px;
+  content: ""; position: fixed; inset: 0 auto 0 0; width: 24px;
   pointer-events: none; z-index: 1;
-  background-image:
-    radial-gradient(ellipse 1.4px 2px at 3px 29px, #93562F66 90%, transparent),
-    radial-gradient(ellipse 1px 1.5px at 11px 36px, #93562F55 90%, transparent),
-    radial-gradient(ellipse 1.2px 1px at 4px 44px, #93562F44 90%, transparent),
-    linear-gradient(to right, transparent 6px, #93562F33 6px, #93562F33 7px, transparent 7px);
-  background-size: 14px 160px, 14px 160px, 14px 160px, 14px 100%;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2248%22%20viewBox%3D%220%200%2024%2048%22%3E%3Cpath%20d%3D%22M0%200H10C26%200%2026%2024%2010%2024C26%2024%2026%2048%2010%2048H0Z%22%20fill%3D%22%23EAD9C4%22%2F%3E%3Cpath%20d%3D%22M10%200C26%200%2026%2024%2010%2024C26%2024%2026%2048%2010%2048%22%20fill%3D%22none%22%20stroke%3D%22%23B88E65%22%20stroke-width%3D%221.5%22%2F%3E%3C%2Fsvg%3E");
+  background-size: 24px 48px;
   background-repeat: repeat-y;
-  mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent);
 }
 .st-key-topbar {margin-bottom: .25rem;}
 .project-label {
