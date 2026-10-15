@@ -89,13 +89,13 @@
   background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--recipe-color);
   border-radius: 14px; padding: 18px; display: flex; flex-direction: column;
 }
-.priority {font-size: 10px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .035em; margin: 0 0 12px; min-height: 30px;}
 .recommendation h3 {font-family: Manrope, sans-serif; font-size: 15px; line-height: 1.4; margin: 0 0 14px; min-height: 42px;}
 .recommendation-result {font-family: Lora, Georgia, serif; font-size: 30px; line-height: 1.2; letter-spacing: -.03em; color: var(--recipe-color);}
 .result-label {font-size: 11px; color: var(--muted); line-height: 1.55; margin: 5px 0 16px; min-height: 34px;}
 .recommendation-story {font-size: 12px; line-height: 1.7; margin: 0 0 18px;}
 .next-test {font-size: 12px; line-height: 1.65; margin: auto 0 0; border-top: 1px solid var(--line); padding-top: 12px; min-height: 90px;}
-.next-test strong {display: block; margin-bottom: 3px; font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .035em;}
+.study-sources {display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 24px; font-size: 11px; line-height: 1.6; color: var(--muted);}
+.study-sources a {color: var(--caramel); text-underline-offset: 3px;}
 @media (max-width: 1050px) {
   .stMainBlockContainer {padding: 1.5rem 2rem 2rem;}
   .hero {gap: 26px;}
@@ -105,6 +105,12 @@
   .ingredient-card {padding: 12px; gap: 10px;}
   .ingredient-icon {width: 32px; height: 32px;}
   .recommendation {padding: 14px;}
+}
+@media (max-width: 900px) {
+  [data-testid="stHorizontalBlock"]:has(.st-key-sugar_panel) {flex-direction: column;}
+  [data-testid="stHorizontalBlock"]:has(.st-key-sugar_panel) > [data-testid="stColumn"] {width: 100%; flex: 1 1 100%;}
+  .recommendation-grid {grid-template-columns: 1fr;}
+  .recommendation h3, .result-label, .next-test {min-height: unset;}
 }
 @media (max-width: 740px) {
   .stMainBlockContainer {padding: 1rem 1rem 1.8rem;}
@@ -128,7 +134,6 @@
   .page-heading h1 {font-size: 28px;}
   .recommendations h2 {font-size: 17px;}
   .recommendation h3 {min-height: unset; margin-bottom: 10px;}
-  .priority {min-height: unset;}
   .result-label {min-height: unset; margin-bottom: 12px;}
   .recommendation-result {font-size: 29px;}
   .next-test {min-height: unset;}

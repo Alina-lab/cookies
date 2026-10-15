@@ -24,11 +24,19 @@ def check_page(page, plots, points):
     assert page.locator('[data-testid="stException"]').count() == 0
     expect(page).to_have_title("Печенье · снижение сахарозы")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-    expect(page.get_by_role("button", name="Об исследовании", exact=True)).to_have_count(0)
     expect(page.locator('.takeaway')).to_have_count(0)
-    # Источники и ограничения сохранены в README и notebook.
-    assert page.get_by_role("link", name="Научная статья", exact=True).count() == 0
-    assert page.get_by_text("Rodriguez-Garcia et al., 2022", exact=False).count() == 0
+    assert page.evaluate('document.fonts.check("14px Manrope") && document.fonts.check("16px Lora")')
+    footer = page.locator('.study-sources')
+    expect(footer).to_have_count(1)
+    for name, href in [
+        ("Данные Университета Рединга", "https://doi.org/10.17864/1947.000384"),
+        ("Научная статья", "https://doi.org/10.1016/j.lwt.2022.113837"),
+        ("Jupyter Notebook", "https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb"),
+    ]:
+        link = footer.get_by_role('link', name=name, exact=True)
+        expect(link).to_have_attribute('href', href)
+        link.scroll_into_view_if_needed()
+        expect(link).to_be_visible()
     ornaments = page.locator('[data-testid="stAppViewContainer"]').evaluate("""e =>
         ['::before', '::after'].map(pseudo => {
             const s=getComputedStyle(e, pseudo);
@@ -49,6 +57,17 @@ def check_page(page, plots, points):
         assert left['left'] >= 0 and left['left'] + left['width'] < content['x'], left
         assert right['right'] >= 0 and right['right'] + right['width'] < width - content['x'] - content['width'], right
         assert left['width'] > right['width'] and left['opacity'] > right['opacity'], ornaments
+
+
+def check_text_layout(page):
+    overflowing = page.locator('.hero h1, .hero-question, .page-heading h1, .ingredient-card, .recommendation, .recommendation h3, .recommendation-result, .result-label, .recommendation-story, .next-test, .study-sources a').evaluate_all('''es =>
+        es.filter(e=>{
+            // Выносные элементы шрифта могут выходить за line-height без обрезания.
+            const clipped=['hidden','clip'].includes(getComputedStyle(e).overflowY);
+            return e.scrollWidth>e.clientWidth+1 || (clipped && e.scrollHeight>e.clientHeight+1);
+        }).map(e=>e.textContent)
+    ''')
+    assert not overflowing, overflowing
 
 
 def check_chart_labels(page):
@@ -87,11 +106,25 @@ def check_chart_labels(page):
             assert gaps['between'] >= 20, gaps
 
 
-def screenshot(page, directory, name):
+def screenshot(page, directory, name, top=True):
     if directory:
         page.mouse.move(0, 0)
-        page.locator('[data-testid="stMain"]').evaluate("e => e.scrollTop=0")
+        if top:
+            page.locator('[data-testid="stMain"]').evaluate("e => e.scrollTop=0")
+        page.wait_for_function("[...document.querySelectorAll('.modebar--hover .modebar-group')].every(e=>parseFloat(getComputedStyle(e).opacity)<0.01)")
         page.screenshot(path=str(directory / name))
+
+
+def full_screenshot(page, directory, name):
+    if directory:
+        # Снимаем всю страницу в высоком окне той же ширины, без изменения CSS.
+        viewport = page.viewport_size
+        page.locator('[data-testid="stMain"]').evaluate('e=>e.scrollTop=0')
+        height = page.locator('[data-testid="stMain"]').evaluate('e=>e.scrollHeight')
+        page.set_viewport_size({'width': viewport['width'], 'height': height + 4})
+        page.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))")
+        screenshot(page, directory, name)
+        page.set_viewport_size(viewport)
 
 
 def run(executable=None, screenshots=None):
@@ -107,7 +140,8 @@ def run(executable=None, screenshots=None):
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto("http://127.0.0.1:8501", wait_until="networkidle")
-        for width, height in [(1440, 1100), (1024, 900), (390, 844)]:
+        sizes = [(1440, 1100), (1360, 900), (1024, 900), (768, 1024), (390, 844)]
+        for width, height in sizes:
             page.set_viewport_size({"width": width, "height": height})
             page.get_by_text("Результаты", exact=True).click()
             page.get_by_role("heading", name="Печенье", exact=True).wait_for()
@@ -119,13 +153,24 @@ def run(executable=None, screenshots=None):
             assert page.locator(".hero").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width == 390 else 2)
             assert page.locator(".ingredient-grid").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width == 390 else 3)
             assert page.locator(".hero h1").evaluate("e=>getComputedStyle(e).fontFamily").startswith("Lora")
+            panels = page.locator('.st-key-sugar_panel, .st-key-force_panel').evaluate_all('es=>es.map(e=>e.getBoundingClientRect().toJSON())')
+            if width <= 900:
+                assert panels[1]['top'] >= panels[0]['bottom'], panels
+            else:
+                assert abs(panels[0]['top'] - panels[1]['top']) < 2, panels
             check_chart_labels(page)
+            check_text_layout(page)
             assert page.locator(".js-plotly-plot").nth(1).evaluate("e=>e.data[0].type") == "scatter"
             for index, value, selector in [(0, "31,48", ".barlayer .point path"), (1, "61,91", ".scatterlayer .point")]:
                 graph=page.locator(".js-plotly-plot").nth(index)
                 graph.locator(selector).first.hover(force=True)
                 expect(graph.locator(".hoverlayer")).to_contain_text(value)
             screenshot(page, output, f"results-{width}.png")
+            if output and width == 1440:
+                page.locator('.st-key-sugar_panel').scroll_into_view_if_needed()
+                screenshot(page, output, 'results-charts-1440.png', top=False)
+            if width in (1440, 390):
+                full_screenshot(page, output, f'results-full-{width}.png')
             page.get_by_text("Следующие испытания", exact=True).click()
             page.get_by_role("heading", name="Сравнение экспериментальных рецептур", exact=True).wait_for()
             check_page(page, 1, [4])
@@ -133,24 +178,33 @@ def run(executable=None, screenshots=None):
             page.locator('[data-testid="stDataFrame"] canvas').first.wait_for()
             expect(page.locator(".recommendation")).to_have_count(3)
             assert page.locator(".recommendation").evaluate_all("es=>es.map(e=>e.dataset.recipeId)") == ["promitor", "fibruline", "nutriose"]
-            expect(page.locator(".recommendation-result")).to_have_text(["35,11%", "-9,15%", "+5,67 / +5,94"])
+            expect(page.locator(".recommendation-result")).to_have_text(["35,11%", "−9,15%", "+5,67 / +5,94"])
             expect(page.locator(".recommendation-story")).to_have_count(3)
-            expect(page.locator('.recommendation[data-recipe-id="promitor"] .next-test strong')).to_have_count(0)
-            expect(page.locator('.recommendation .next-test strong')).to_have_count(2)
-            if width != 390:
-                heights=page.locator('.recommendation').evaluate_all('es=>es.map(e=>e.getBoundingClientRect().height)')
-                assert max(heights)-min(heights) < 2, heights
-            assert page.locator(".recommendation-grid").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width == 390 else 3)
+            expect(page.locator('.recommendation .priority, .recommendation .next-test strong')).to_have_count(0)
+            expect(page.locator('.recommendation h3')).to_have_text(['Кукурузный декстрин № 2', 'Длинноцепочечный инулин', 'Кукурузный декстрин № 1'])
+            expect(page.locator('.recommendation .result-label')).to_have_text(['снижение сахарозы', 'изменение средней силы разрушения', 'изменение горечи и подгорелого вкуса, пункты'])
+            expect(page.locator('.recommendation .next-test')).to_have_count(3)
+            if width > 900:
+                alignment=page.locator('.recommendation').evaluate_all('''es=>es.map(e=>{
+                    const r=e.getBoundingClientRect(),s=getComputedStyle(e);
+                    return {height:r.height,padding:s.padding,positions:['h3','.recommendation-result','.result-label','.next-test'].map(selector=>e.querySelector(selector).getBoundingClientRect().top-r.top)};
+                })''')
+                assert max(e['height'] for e in alignment)-min(e['height'] for e in alignment) < 2, alignment
+                assert len({e['padding'] for e in alignment}) == 1, alignment
+                for i in range(4):
+                    assert max(e['positions'][i] for e in alignment)-min(e['positions'][i] for e in alignment) < 2, alignment
+            assert page.locator(".recommendation-grid").evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length") == (1 if width <= 900 else 3)
             check_chart_labels(page)
+            check_text_layout(page)
             assert page.locator(".js-plotly-plot").evaluate("e=>e.data.map(t=>t.name)") == ["Горечь", "Подгорелый вкус"]
             for index, value in [(0, "+5,67"), (1, "+5,94")]:
                 # У короткого столбца SVG-группа включает подпись за его краем.
                 # Наводим курсор на сам столбец, а не на центр всей группы.
                 page.locator(".barlayer .trace").nth(index).locator(".point path").first.hover(force=True)
                 expect(page.locator(".hoverlayer")).to_contain_text(value)
-            # Таблица остаётся доступной при внутренней прокрутке на телефоне.
-            if width == 390:
-                scroll=page.locator('[data-testid="stDataFrame"] .dvn-scroller')
+            # Широкая таблица прокручивается внутри контейнера, а не вместе со страницей.
+            scroll=page.locator('[data-testid="stDataFrame"] .dvn-scroller')
+            if scroll.evaluate('e=>e.scrollWidth>e.clientWidth'):
                 scroll.evaluate("e=>e.scrollLeft=e.scrollWidth-e.clientWidth")
                 assert scroll.evaluate("e=>e.scrollLeft>0")
                 scroll.evaluate("e=>e.scrollLeft=0")
@@ -170,10 +224,12 @@ def run(executable=None, screenshots=None):
             screenshot(page, output, f"candidates-{width}.png")
             if output:
                 page.locator('.recommendations').scroll_into_view_if_needed()
-                page.screenshot(path=str(output/f"recommendations-{width}.png"))
+                screenshot(page, output, f"recommendations-{width}.png", top=False)
+                if width in (1440, 390):
+                    full_screenshot(page, output, f'candidates-full-{width}.png')
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
         assert not errors, errors
-        print("Chromium: обе страницы, боковой декор и его скрытие на узких экранах, иллюстрация и иконки, карточки, три графика, таблица и CSV проверены на 1440/1024/390 px; ошибок JavaScript нет.")
+        print("Chromium: 10 проверок страниц на 1440/1360/1024/768/390 px; три графика и подсказки, карточки и выравнивание, источники, SVG, изображения и шрифты, таблица и CSV. Перекрытий и горизонтальной прокрутки нет; ошибок Streamlit и JavaScript нет.")
         browser.close()
 
 

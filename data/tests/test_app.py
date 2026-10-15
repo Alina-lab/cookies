@@ -102,7 +102,6 @@ class CookiesAppTests(unittest.TestCase):
             self.assertIn(term, html)
         self.assertEqual(html.count('class="ingredient-card"'), 3)
         self.assertNotIn("Общее содержание сахаров в готовом печенье не измерялось", html)
-        self.assertNotIn("doi.org", html)
 
     def test_candidates_table_taste_and_recommendations(self):
         at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
@@ -148,19 +147,41 @@ class CookiesAppTests(unittest.TestCase):
         self.assertIn("Все значения взяты из опубликованных средних оценок по шкале от 0 до 100.", html)
         self.assertIn("горечь увеличилась на 19,29 пункта, а подгорелый вкус — на 35,80 пункта", html)
         self.assertEqual(re.findall(r'data-recipe-id="([^"]+)', html), ["promitor", "fibruline", "nutriose"])
-        for value in ["35,11%", "−9,15%", "+5,67 / +5,94"]:
-            self.assertIn(value.replace("−", "-"), html)
         self.assertEqual(html.count('class="recommendation-story"'), 3)
-        for term in ["27,35%", "27,62 пункта", "34,84%", "24,04%", "32,24%", "7,87%",
-                     "При повторных испытаниях необходимо выяснить, насколько эти изменения допустимы для производства.", "При следующих выпечках нужно сравнить со стандартом размеры",
-                     "При повторных выпечках стоит оценить оба вкусовых признака", "Рекомендации по рецептурам"]:
-            self.assertIn(term, html)
-        first_card = re.search(r'<article class="recommendation" data-recipe-id="promitor".*?</article>', html).group(0)
-        self.assertNotIn("Что проверить", first_card)
-        self.assertIn("В этой рецептуре удалось добиться наибольшего сокращения сахарозы — на 35,11% относительно стандарта. Однако средняя сила разрушения печенья уменьшилась на 27,35%, а интенсивность подгорелого вкуса выросла на 27,62 пункта.", first_card)
-        self.assertEqual(html.count("<strong>Что проверить</strong>"), 2)
-        self.assertNotIn("doi.org", html)
+        approved_cards = [
+            ("promitor", "35,11%", "снижение сахарозы",
+             "В этой рецептуре удалось добиться наибольшего сокращения сахарозы — на 35,11% относительно стандарта. Однако средняя сила разрушения печенья уменьшилась на 27,35%, а интенсивность подгорелого вкуса выросла на 27,62 пункта.",
+             "При повторных испытаниях необходимо выяснить, насколько эти изменения допустимы для производства."),
+            ("fibruline", "−9,15%", "изменение средней силы разрушения",
+             "При замене части сахарозы длинноцепочечным инулином её количество сократилось на 34,84%. Средняя сила разрушения оказалась на 9,15% ниже стандарта — это наименьшее изменение среди экспериментальных рецептур. При этом длина печенья уменьшилась на 7,87%, а сопротивление проколу увеличилось на 32,24%.",
+             "При повторных испытаниях необходимо проверить размеры печенья, сопротивление проколу и силу разрушения."),
+            ("nutriose", "+5,67 / +5,94", "изменение горечи и подгорелого вкуса, пункты",
+             "В рецептуре с кукурузным декстрином № 1 оценки горечи и подгорелого вкуса отличались от стандарта меньше всего: на 5,67 и 5,94 пункта соответственно. Средняя сила разрушения при этом уменьшилась на 24,04%.",
+             "При повторных испытаниях необходимо оценить вкусовые характеристики и физические свойства печенья."),
+        ]
+        for rid, value, label, story, conclusion in approved_cards:
+            card = re.search(rf'<article class="recommendation" data-recipe-id="{rid}".*?</article>', html).group(0)
+            self.assertEqual(re.findall(r'<(?:h3|div|p)\b[^>]*>(.*?)</(?:h3|div|p)>', card),
+                             [candidates.set_index("recipe_id").loc[rid, "recipe_name_ru"], value, label, story, conclusion])
+            self.assertNotIn("priority", card)
+            self.assertNotIn("Что проверить", card)
         self.assertEqual(len(at.get("download_button")), 1)
+
+    def test_sources_footer_on_both_pages(self):
+        at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
+        expected_links = [
+            ("https://doi.org/10.17864/1947.000384", "Данные Университета Рединга"),
+            ("https://doi.org/10.1016/j.lwt.2022.113837", "Научная статья"),
+            ("https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb", "Jupyter Notebook"),
+        ]
+        for page in app.PAGES:
+            at.radio(key="page").set_value(page).run()
+            self.healthy(at)
+            html = html_bodies(at)
+            footers = re.findall(r'<footer class="study-sources".*?</footer>', html)
+            self.assertEqual(len(footers), 1)
+            self.assertEqual(re.findall(r'<a href="([^"]+)" target="_blank" rel="noopener noreferrer">([^<]+)</a>', footers[0]), expected_links)
+            self.assertTrue(html.rstrip().endswith(footers[0]))
 
     def test_navigation_does_not_leave_hidden_old_content(self):
         at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()

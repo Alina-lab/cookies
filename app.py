@@ -270,31 +270,33 @@ def recommendation_cards(tables):
     taste = candidates.index[(candidates.bitterness_delta_points.abs() == candidates.bitterness_delta_points.abs().min())
                              & (candidates.burnt_taste_delta_points.abs() == candidates.burnt_taste_delta_points.abs().min())][0]
     choices = [
-        (sugar, "Сильнее сократить сахарозу", number(candidates.loc[sugar, "sucrose_reduction_pct"]) + "%",
+        (sugar, number(candidates.loc[sugar, "sucrose_reduction_pct"]) + "%",
          "снижение сахарозы",
          f'В этой рецептуре удалось добиться наибольшего сокращения сахарозы — на {number(candidates.loc[sugar, "sucrose_reduction_pct"])}% относительно стандарта. '
          f'Однако средняя сила разрушения печенья уменьшилась на {number(-candidates.loc[sugar, "breaking_relative_delta_pct"])}%, '
          f'а интенсивность подгорелого вкуса выросла на {number(candidates.loc[sugar, "burnt_taste_delta_points"])} пункта.',
          "При повторных испытаниях необходимо выяснить, насколько эти изменения допустимы для производства."),
-        (force, "Близкая к стандарту сила разрушения", number(candidates.loc[force, "breaking_relative_delta_pct"], signed=True) + "%",
+        (force, number(candidates.loc[force, "breaking_relative_delta_pct"], signed=True).replace("-", "−") + "%",
          "изменение средней силы разрушения",
-         f'При сокращении сахарозы на {number(candidates.loc[force, "sucrose_reduction_pct"])}% средняя сила разрушения оказалась ближе всего к стандарту. '
-         'Но печенье было короче на 7,87%, а сопротивление проколу — выше на 32,24%. Близкая сила разрушения ещё не означает, что текстура осталась прежней.',
-         "При следующих выпечках нужно сравнить со стандартом размеры, сопротивление проколу и силу разрушения."),
-        (taste, "Меньшие изменения горечи и подгорелого вкуса", number(candidates.loc[taste, "bitterness_delta_points"], signed=True) + " / " +
+         f'При замене части сахарозы длинноцепочечным инулином её количество сократилось на {number(candidates.loc[force, "sucrose_reduction_pct"])}%. '
+         f'Средняя сила разрушения оказалась на {number(-candidates.loc[force, "breaking_relative_delta_pct"])}% ниже стандарта — это наименьшее изменение среди экспериментальных рецептур. '
+         'При этом длина печенья уменьшилась на 7,87%, а сопротивление проколу увеличилось на 32,24%.',
+         "При повторных испытаниях необходимо проверить размеры печенья, сопротивление проколу и силу разрушения."),
+        (taste, number(candidates.loc[taste, "bitterness_delta_points"], signed=True) + " / " +
          number(candidates.loc[taste, "burnt_taste_delta_points"], signed=True),
-         "горечь / подгорелый вкус, пункты 0–100",
-         'По средним оценкам этот вариант ближе всего к стандарту по горечи и подгорелому вкусу. '
-         f'При этом печенье было ниже стандартного, а для его разрушения в среднем требовалось на {number(-candidates.loc[taste, "breaking_relative_delta_pct"])}% меньше усилия.',
-         "При повторных выпечках стоит оценить оба вкусовых признака, измерить высоту и силу разрушения печенья."),
+         "изменение горечи и подгорелого вкуса, пункты",
+         'В рецептуре с кукурузным декстрином № 1 оценки горечи и подгорелого вкуса отличались от стандарта меньше всего: '
+         f'на {number(candidates.loc[taste, "bitterness_delta_points"])} и {number(candidates.loc[taste, "burnt_taste_delta_points"])} пункта соответственно. '
+         f'Средняя сила разрушения при этом уменьшилась на {number(-candidates.loc[taste, "breaking_relative_delta_pct"])}%.',
+         "При повторных испытаниях необходимо оценить вкусовые характеристики и физические свойства печенья."),
     ]
     cards = "".join(
         f'<article class="recommendation" data-recipe-id="{rid}" style="--recipe-color:{PALETTE[rid]}">'
-        f'<p class="priority">{priority}</p><h3>{escape(candidates.loc[rid, "recipe_name_ru"])}</h3>'
+        f'<h3>{escape(candidates.loc[rid, "recipe_name_ru"])}</h3>'
         f'<div class="recommendation-result">{value}</div><p class="result-label">{label}</p>'
         f'<p class="recommendation-story">{story}</p>'
-        f'<p class="next-test">{next_test if rid == sugar else "<strong>Что проверить</strong>" + next_test}</p></article>'
-        for rid, priority, value, label, story, next_test in choices)
+        f'<p class="next-test">{next_test}</p></article>'
+        for rid, value, label, story, next_test in choices)
     st.html('<section class="recommendations"><h2>Рекомендации по рецептурам</h2>'
             '<div class="recommendation-grid">' + cards + '</div></section>')
 
@@ -337,6 +339,12 @@ def main():
         results_page(tables)
     else:
         candidates_page(tables)
+    st.html('<footer class="study-sources" aria-label="Источники исследования">'
+            '<span>Источники исследования</span>'
+            '<a href="https://doi.org/10.17864/1947.000384" target="_blank" rel="noopener noreferrer">Данные Университета Рединга</a>'
+            '<a href="https://doi.org/10.1016/j.lwt.2022.113837" target="_blank" rel="noopener noreferrer">Научная статья</a>'
+            '<a href="https://github.com/Alina-lab/cookies/blob/main/biscuit_recipe_analysis.ipynb" target="_blank" rel="noopener noreferrer">Jupyter Notebook</a>'
+            '</footer>')
 
 
 if __name__ == "__main__":
